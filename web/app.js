@@ -1497,15 +1497,17 @@ function encodeXTG(imageData) {
     header[2] = 0x47; // G
     header[3] = 0x00;
 
-    // Version
-    view.setUint16(4, 1, true);
-
-    // Dimensions
-    view.setUint16(6, width, true);
-    view.setUint16(8, height, true);
+    // Dimensions (per XTG spec - no version field!)
+    view.setUint16(4, width, true);    // offset 0x04
+    view.setUint16(6, height, true);   // offset 0x06
+    header[8] = 0;                      // colorMode = 0 (monochrome)
+    header[9] = 0;                      // compression = 0 (uncompressed)
 
     // Bitmap: 8 pixels per byte, MSB = leftmost
     var rowBytes = Math.ceil(width / 8);
+    var dataSize = rowBytes * height;
+    view.setUint32(10, dataSize, true); // offset 0x0A (dataSize)
+    // md5 at 0x0E left as zeros (optional)
     var bitmap = new Uint8Array(rowBytes * height);
 
     for (var y = 0; y < height; y++) {
@@ -1546,15 +1548,17 @@ function encodeXTH(imageData) {
     header[2] = 0x48; // H
     header[3] = 0x00;
 
-    // Version
-    view.setUint16(4, 1, true);
-
-    // Dimensions
-    view.setUint16(6, width, true);
-    view.setUint16(8, height, true);
+    // Dimensions (per XTH spec - no version field!)
+    view.setUint16(4, width, true);    // offset 0x04
+    view.setUint16(6, height, true);   // offset 0x06
+    header[8] = 0;                      // colorMode = 0
+    header[9] = 0;                      // compression = 0
 
     // Two bit planes, vertical scan, columns right-to-left
     var colBytes = Math.ceil(height / 8);
+    var dataSize = colBytes * width * 2; // Two bit planes
+    view.setUint32(10, dataSize, true); // offset 0x0A (dataSize)
+    // md5 at 0x0E left as zeros (optional)
     var plane0 = new Uint8Array(colBytes * width); // bit 0
     var plane1 = new Uint8Array(colBytes * width); // bit 1
 
@@ -1630,7 +1634,11 @@ function buildXTCContainer(pages, isHQ) {
     }
     view.setUint16(4, 1, true); // Version
     view.setUint16(6, pages.length, true); // Page count
-    view.setUint32(8, 0, true); // Flags
+    // Individual flag bytes per XTC spec
+    bytes[8] = 0;   // readDirection (0 = L→R)
+    bytes[9] = 1;   // hasMetadata
+    bytes[10] = 0;  // hasThumbnails
+    bytes[11] = currentToc.length > 0 ? 1 : 0;  // hasChapters
     view.setUint32(12, 1, true); // Current page (1-indexed)
 
     // Use BigInt for 64-bit values

@@ -98,8 +98,19 @@ Example `settings.json`:
 
 ## XTC/XTCH Format
 
-- **XTC**: 1-bit monochrome pages (fast rendering, smaller files)
-- **XTCH**: 2-bit grayscale pages (4 levels, better image quality)
+Native binary ebook format for Xteink e-readers. Stores pre-rendered bitmap pages optimized for the device's e-paper display.
+
+| Extension | Container | Page Format | Bit Depth | Description |
+|-----------|-----------|-------------|-----------|-------------|
+| `.xtc`    | XTC       | XTG         | 1-bit     | Monochrome, fast rendering, smaller files |
+| `.xtch`   | XTCH      | XTH         | 2-bit     | 4-level grayscale, better image quality |
+
+### Xteink X4 Specifics
+
+- **Display**: 480x800 e-paper (4.3")
+- **XTG (1-bit)**: Row-major scan, 8 pixels per byte, MSB = leftmost pixel
+- **XTH (2-bit)**: Vertical scan order (columns right-to-left), optimized for e-paper refresh
+- **Grayscale LUT**: Non-linear mapping (0=white, 1=dark gray, 2=light gray, 3=black)
 
 Both formats include:
 - Document metadata (title, author)
