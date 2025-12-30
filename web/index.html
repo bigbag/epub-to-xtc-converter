@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPUB to XTC Converter - E-Reader Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Book Info -->
+            <div class="book-info" id="bookInfo">
+                <div class="title" id="bookTitle">No book loaded</div>
+                <div class="author" id="bookAuthor">Drop an EPUB file to start</div>
+            </div>
+
+            <!-- Drop Zone -->
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">+</div>
+                <div class="drop-zone-text">Drop EPUB files here or click to browse</div>
+            </div>
+            <input type="file" id="fileInput" accept=".epub" multiple>
+
+            <!-- File List -->
+            <div class="file-list" id="fileList"></div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="active" data-tab="converter">Converter</button>
+                <button data-tab="optimizer">Optimizer</button>
+            </div>
+
+            <!-- Converter Tab -->
+            <div class="tab-content active" id="converter-tab">
+                <h2>Device</h2>
+                <div class="control-group">
+                    <label>Device Preset</label>
+                    <select id="devicePreset">
+                        <option value="xteink-x4">Xteink X4 (480x800)</option>
+                        <option value="xteink-x3">Xteink X3 (528x792)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+
+                <div class="control-group" id="customDimensions" style="display: none;">
+                    <label>Custom Dimensions</label>
+                    <div class="slider-row">
+                        <input type="number" id="customWidth" value="480" min="100" max="2000" placeholder="Width">
+                        <span>x</span>
+                        <input type="number" id="customHeight" value="800" min="100" max="2000" placeholder="Height">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Orientation</label>
+                    <div class="orientation-buttons">
+                        <button class="active" data-orientation="0">0</button>
+                        <button data-orientation="90">90</button>
+                        <button data-orientation="180">180</button>
+                        <button data-orientation="270">270</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Monitor DPI: <span id="monitorDpiValue">96</span> (Scale: <span id="previewScaleValue">44</span>%)</label>
+                    <div class="slider-row">
+                        <input type="range" id="monitorDpi" min="72" max="300" value="96">
+                        <input type="number" id="monitorDpiNum" min="72" max="300" value="96">
+                    </div>
+                </div>
+
+                <h2>Text Settings</h2>
+                <div class="control-group">
+                    <label>Font Family</label>
+                    <select id="fontFamily">
+                        <option value="Literata">Literata</option>
+                        <option value="Lora">Lora</option>
+                        <option value="Merriweather">Merriweather</option>
+                        <option value="Source Serif 4">Source Serif 4</option>
+                        <option value="Noto Serif">Noto Serif</option>
+                        <option value="Noto Sans">Noto Sans</option>
+                        <option value="Open Sans">Open Sans</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="EB Garamond">EB Garamond</option>
+                        <option value="Crimson Pro">Crimson Pro</option>
+                        <option value="custom">Custom Font...</option>
+                    </select>
+                </div>
+                <input type="file" id="customFontInput" accept=".ttf,.otf">
+
+                <div class="control-group">
+                    <label>Font Size: <span id="fontSizeValue">34</span>px</label>
+                    <div class="slider-row">
+                        <input type="range" id="fontSize" min="12" max="48" value="34">
+                        <input type="number" id="fontSizeNum" min="12" max="48" value="34">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Font Weight: <span id="fontWeightValue">400</span></label>
+                    <div class="slider-row">
+                        <input type="range" id="fontWeight" min="100" max="900" step="100" value="400">
+                        <input type="number" id="fontWeightNum" min="100" max="900" step="100" value="400">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Line Height: <span id="lineHeightValue">120</span>%</label>
+                    <div class="slider-row">
+                        <input type="range" id="lineHeight" min="100" max="200" value="120">
+                        <input type="number" id="lineHeightNum" min="100" max="200" value="120">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Margins: <span id="marginValue">16</span>px</label>
+                    <div class="slider-row">
+                        <input type="range" id="margin" min="0" max="48" value="16">
+                        <input type="number" id="marginNum" min="0" max="48" value="16">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Text Alignment</label>
+                    <select id="textAlign">
+                        <option value="justify">Justify</option>
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Hyphenation</label>
+                    <select id="hyphenation">
+                        <option value="0">None</option>
+                        <option value="1">Algorithmic</option>
+                        <option value="2" selected>Dictionary</option>
+                    </select>
+                </div>
+
+                <div class="control-group" id="hyphenationLangGroup">
+                    <label>Hyphenation Language</label>
+                    <select id="hyphenationLang">
+                        <option value="auto" selected>Auto</option>
+                        <option value="en">English</option>
+                        <option value="en-gb">English (UK)</option>
+                        <option value="de">German</option>
+                        <option value="fr">French</option>
+                        <option value="es">Spanish</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="pt-br">Portuguese (Brazil)</option>
+                        <option value="nl">Dutch</option>
+                        <option value="pl">Polish</option>
+                        <option value="ru">Russian</option>
+                        <option value="uk">Ukrainian</option>
+                        <option value="cs">Czech</option>
+                        <option value="sk">Slovak</option>
+                        <option value="hu">Hungarian</option>
+                        <option value="ro">Romanian</option>
+                        <option value="bg">Bulgarian</option>
+                        <option value="sr">Serbian</option>
+                        <option value="hr">Croatian</option>
+                        <option value="sl">Slovenian</option>
+                        <option value="mk">Macedonian</option>
+                        <option value="el">Greek</option>
+                        <option value="tr">Turkish</option>
+                        <option value="sv">Swedish</option>
+                        <option value="da">Danish</option>
+                        <option value="no">Norwegian</option>
+                        <option value="fi">Finnish</option>
+                        <option value="et">Estonian</option>
+                        <option value="lv">Latvian</option>
+                        <option value="lt">Lithuanian</option>
+                        <option value="is">Icelandic</option>
+                        <option value="ga">Irish</option>
+                        <option value="cy">Welsh</option>
+                        <option value="eu">Basque</option>
+                        <option value="ca">Catalan</option>
+                        <option value="gl">Galician</option>
+                        <option value="oc">Occitan</option>
+                        <option value="la">Latin</option>
+                        <option value="eo">Esperanto</option>
+                        <option value="hy">Armenian</option>
+                        <option value="ka">Georgian</option>
+                    </select>
+                </div>
+
+                <h2>Image Settings</h2>
+                <div class="control-group">
+                    <label>Quality Mode</label>
+                    <select id="qualityMode">
+                        <option value="hq">High Quality (2-bit, XTCH)</option>
+                        <option value="fast">Fast (1-bit, XTC)</option>
+                    </select>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableDithering" checked>
+                    <label for="enableDithering">Enable Dithering</label>
+                </div>
+
+                <div class="control-group" id="ditherStrengthGroup">
+                    <label>Dither Strength: <span id="ditherStrengthValue">70</span>%</label>
+                    <div class="slider-row">
+                        <input type="range" id="ditherStrength" min="0" max="100" value="70">
+                        <input type="number" id="ditherStrengthNum" min="0" max="100" value="70">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableNegative">
+                    <label for="enableNegative">Negative (Dark Mode)</label>
+                </div>
+
+                <h2>Progress Bar</h2>
+                <div class="progress-bar-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enableProgressBar">
+                        <label for="enableProgressBar">Enabled</label>
+                    </div>
+                    <select id="progressPosition" style="flex: 1;">
+                        <option value="bottom">Bottom</option>
+                        <option value="top">Top</option>
+                    </select>
+                </div>
+
+                <div id="progressSettings" style="display: none;">
+                    <label style="font-size: 11px; color: #888; margin: 8px 0 4px;">Progress Line</label>
+                    <div class="checkbox-row">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showBookProgress" checked>
+                            <label for="showBookProgress">Book</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showChapterMarks" checked>
+                            <label for="showChapterMarks">Chapter Marks</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showChapterProgress">
+                            <label for="showChapterProgress">Chapter</label>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="progressFullWidth">
+                        <label for="progressFullWidth">Full Width</label>
+                    </div>
+
+                    <div class="checkbox-row">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showPageXY" checked>
+                            <label for="showPageXY">Page (X/Y)</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showBookPercent" checked>
+                            <label for="showBookPercent">Book %</label>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-row">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showChapterXY" checked>
+                            <label for="showChapterXY">Chapter (X/Y)</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showChapterPercent">
+                            <label for="showChapterPercent">Chapter %</label>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Font Size: <span id="statusFontSizeValue">14</span>px</label>
+                        <div class="slider-row">
+                            <input type="range" id="statusFontSize" min="8" max="24" value="14">
+                            <input type="number" id="statusFontSizeNum" min="8" max="24" value="14">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Edge Margin (top/bottom): <span id="statusEdgeMarginValue">0</span>px</label>
+                        <div class="slider-row">
+                            <input type="range" id="statusEdgeMargin" min="0" max="24" value="0">
+                            <input type="number" id="statusEdgeMarginNum" min="0" max="24" value="0">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Side Margin (left/right): <span id="statusSideMarginValue">0</span>px</label>
+                        <div class="slider-row">
+                            <input type="range" id="statusSideMargin" min="0" max="24" value="0">
+                            <input type="number" id="statusSideMarginNum" min="0" max="24" value="0">
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Chapters</h2>
+                <div class="chapter-list" id="chapterList"></div>
+            </div>
+
+            <!-- Optimizer Tab -->
+            <div class="tab-content" id="optimizer-tab">
+                <h2>EPUB Optimizer</h2>
+                <p style="font-size: 12px; color: #aaa; margin-bottom: 16px;">
+                    Optimize EPUB files for e-ink readers by removing problematic CSS and resizing images.
+                </p>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="optRemoveCss" checked>
+                    <label for="optRemoveCss">Remove problematic CSS</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="optStripFonts" checked>
+                    <label for="optStripFonts">Strip embedded fonts</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="optGrayscale" checked>
+                    <label for="optGrayscale">Convert images to grayscale</label>
+                </div>
+
+                <div class="control-group">
+                    <label>Max Image Width: <span id="maxImageWidthValue">480</span>px</label>
+                    <div class="slider-row">
+                        <input type="range" id="maxImageWidth" min="200" max="1200" value="480">
+                        <input type="number" id="maxImageWidthNum" min="200" max="1200" value="480">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="optInjectCss" checked>
+                    <label for="optInjectCss">Inject e-paper CSS</label>
+                </div>
+
+                <button id="optimizeBtn" class="primary" style="width: 100%; padding: 12px; margin-top: 16px; background: #e94560; border: none; border-radius: 4px; color: #eee; cursor: pointer; font-size: 14px;">
+                    Optimize EPUBs
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Preview Header -->
+            <div class="preview-header">
+                <div class="nav-buttons">
+                    <button id="prevBtn" disabled>&lt; Prev</button>
+                    <button id="refreshBtn">Refresh</button>
+                    <button id="nextBtn" disabled>Next &gt;</button>
+                </div>
+                <div class="page-info" id="pageInfo">Page 0 / 0</div>
+                <div class="export-buttons">
+                    <button id="exportPageBtn" disabled>Export Page</button>
+                    <button id="exportBtn" class="primary" disabled>Export XTC</button>
+                    <button id="exportAllBtn" disabled style="display: none;">Export All</button>
+                </div>
+            </div>
+
+            <!-- Preview Area -->
+            <div class="preview-area">
+                <canvas id="previewCanvas" width="480" height="800"></canvas>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">Ready</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JSZip for batch export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- CREngine WASM -->
+    <script src="crengine.js"></script>
+
+    <!-- Main Application -->
+    <script src="app.js"></script>
+</body>
+</html>

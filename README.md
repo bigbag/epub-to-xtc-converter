@@ -1,170 +1,152 @@
-# EPUB Optimizer for Xteink X4
+# EPUB to XTC Converter & Optimizer
 
-[![Tests](https://github.com/bigbag/epub-optimizer-xteink/workflows/Tests/badge.svg)](https://github.com/bigbag/epub-optimizer-xteink/actions?query=workflow%3ATests)
-[![versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue.svg)](https://github.com/bigbag/epub-optimizer-xteink)
-[![license](https://img.shields.io/github/license/bigbag/epub-optimizer-xteink.svg)](https://github.com/bigbag/epub-optimizer-xteink/blob/main/LICENSE)
+A browser-based tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-ink readers.
 
-Optimizes EPUB files for the Xteink X4 e-reader (and similar small e-paper devices).
-
-## Why This Tool?
-
-The Xteink X4 is a compact 4.3" e-ink reader with a 480×800 pixel monochrome display and only 128MB RAM. Standard EPUBs often render poorly on such devices due to:
-
-- **Complex CSS layouts** (floats, flexbox, grid) that the simple reader engine can't handle
-- **Large embedded fonts** consuming precious memory and storage
-- **High-resolution color images** wasting space on a grayscale screen
-- **Fixed-width designs** meant for larger tablets, causing text overflow or tiny fonts
-
-This optimizer sanitizes EPUBs specifically for the X4's constraints, resulting in faster page turns, better readability, and smaller file sizes.
-
-## Xteink X4 Specifications
-
-- **Display**: 4.3" E Ink
-- **Resolution**: 480×800 pixels
-- **PPI**: 220
-- **Color**: Monochrome
-- **Formats**: TXT, EPUB
+**[Live Demo](https://liashkov.site/epub-to-xtc-converter/)**
 
 ## Features
 
-- **CSS Sanitization**: Removes floats, fixed positioning, flex/grid layouts
-- **Font Removal**: Strips embedded fonts to reduce file size
-- **Image Optimization**: Converts to grayscale, resizes to 480px max width, applies contrast boost and sharpening
-- **E-paper CSS Injection**: Adds optimized stylesheet for e-ink displays
+### EPUB to XTC/XTCH Converter
+- Convert EPUB books to Xteink's native XTC (1-bit) or XTCH (2-bit grayscale) format
+- Uses CREngine WASM for accurate rendering (same as CoolReader)
+- Batch processing - convert multiple files at once
+- Customizable settings:
+  - Device presets (Xteink X4, X3, custom dimensions)
+  - Monitor DPI for accurate preview scaling
+  - Font family, size, weight (Google Fonts + custom upload)
+  - Line height and margins
+  - Text alignment and hyphenation (42 languages)
+  - Dithering with adjustable strength
+  - Progress bar (page numbers, percentages, chapter marks)
+  - Dark mode (negative)
+- Export individual pages or entire books
+- Download all as ZIP for batch exports
 
-## Installation
+### EPUB Optimizer
+- Optimize EPUB files for e-ink readers
+- Remove problematic CSS (floats, flex, grid, fixed positioning)
+- Strip embedded fonts to reduce file size
+- Convert images to grayscale
+- Resize images to configurable max width
+- Inject e-paper optimized CSS
+- Batch processing with ZIP export
 
-```bash
-uv sync
-```
+## Supported Devices
+
+| Device | Resolution | Format |
+|--------|------------|--------|
+| Xteink X4 | 480x800 | XTC/XTCH |
+| Xteink X3 | 528x792 | XTC/XTCH |
+| Custom | Any | XTC/XTCH |
 
 ## Usage
 
-```bash
-python src/optimizer.py INPUT_DIR OUTPUT_DIR [OPTIONS]
-```
+1. Open the web app in your browser
+2. Drop EPUB files onto the drop zone (or click to browse)
+3. Adjust settings in the sidebar
+4. Preview pages using navigation buttons
+5. Click "Export XTC" for single file or "Export All" for batch
 
-Or using make:
+### Converter Tab
+- **Device**: Select target device or enter custom dimensions
+- **Orientation**: Rotate output (0°, 90°, 180°, 270°)
+- **Monitor DPI**: Scale preview to match your monitor (default 96 DPI)
+- **Text Settings**: Font, size, weight, line height, margins, alignment, hyphenation language
+- **Image Settings**: Quality mode (1-bit/2-bit), dithering strength, dark mode
+- **Progress Bar**: Book/chapter progress, page numbers (X/Y), percentages, chapter marks
 
-```bash
-make optimize INPUT=./input OUTPUT=./output
-```
+### Optimizer Tab
+- Drop EPUBs and switch to the Optimizer tab
+- Configure optimization options
+- Click "Optimize EPUBs" to download optimized files
 
-### Options
+## XTC/XTCH Format
 
-- `--no-image-downscale` - Skip image processing (default: False)
-- `--keep-fonts` - Keep embedded fonts (default: False)
-- `--recursive` - Process subdirectories (default: False)
-- `--max-width` - Max image width in pixels (default: 480)
-- `--quality` - JPEG quality 1-100 (default: 75)
+- **XTC**: 1-bit monochrome pages (fast rendering, smaller files)
+- **XTCH**: 2-bit grayscale pages (4 levels, better image quality)
 
-### Examples
+Both formats include:
+- Document metadata (title, author)
+- Chapter navigation (TOC)
+- Page index for random access
 
-Basic conversion:
-```bash
-python src/optimizer.py ./ebooks ./optimized
-```
+See [XTC Format Specification](docs/xtc-format-spec.md) for technical details.
 
-Recursive with custom quality:
-```bash
-python src/optimizer.py ./library ./x4-ready --recursive --quality 85
-```
+## Self-Hosting
 
-Keep fonts, skip image processing:
-```bash
-python src/optimizer.py ./input ./output --keep-fonts --no-image-downscale
-```
-
-## EPUB to XTC/XTCH Conversion
-
-Convert EPUB files to Xteink's native XTC/XTCH format:
+Clone the repository and serve the web directory:
 
 ```bash
-python src/converter.py book.epub book.xtch --font fonts/Bookerly.ttf
+git clone https://github.com/bigbag/epub-optimizer-xteink.git
+cd epub-optimizer-xteink/web
+
+# Using Python
+python -m http.server 8000
+
+# Using Node.js
+npx serve .
+
+# Using PHP
+php -S localhost:8000
 ```
 
-Or using make (uses Bookerly fonts from `fonts/` by default):
+Then open http://localhost:8000 in your browser.
 
-```bash
-make convert INPUT=book.epub OUTPUT=book.xtch
-make convert INPUT=book.epub OUTPUT=book.xtch FONT_SIZE=40  # larger text
-make convert-mono INPUT=book.epub OUTPUT=book.xtc  # 1-bit monochrome
-```
-
-### Options
-
-- `--format {xtc,xtch}` - Output format: xtc (1-bit mono) or xtch (2-bit grayscale, default)
-- `--font PATH` - Regular font file (REQUIRED)
-- `--font-bold PATH` - Bold font variant (optional)
-- `--font-italic PATH` - Italic font variant (optional)
-- `--font-bold-italic PATH` - Bold-Italic font variant (optional)
-- `--font-size {28,34,40}` - Base font size in pixels (default: 34)
-- `--recursive` - Process directories recursively
-
-### Font Size and PPI
-
-The Xteink X4 has 220 PPI, which affects how font sizes translate to readable text:
-
-- At 220 PPI: 1 point ≈ 3 pixels
-- For readable 11pt text: need ~34 pixels
-
-Available font sizes:
-- `28` - Small (~9pt)
-- `34` - Medium (~11pt, default)
-- `40` - Large (~13pt)
-
-## Architecture
+## Project Structure
 
 ```
-src/
-├── config.py          # Centralized configuration (display, typography, format constants)
-├── epub_utils.py      # Shared EPUB utilities (namespaces, OPF finding)
-├── optimizer.py       # EPUB sanitizer CLI
-├── converter.py       # EPUB to XTC/XTCH converter CLI
-├── epub_parser.py     # EPUB content extraction
-├── text_renderer.py   # PIL-based text rendering
-├── pagination.py      # Page layout and text flow
-└── xtc_format.py      # XTC/XTCH binary encoding
+/
+├── web/
+│   ├── index.html          # Main HTML structure
+│   ├── style.css           # Application styles
+│   ├── app.js              # Main application logic
+│   ├── crengine.js         # CREngine WASM loader
+│   ├── crengine.wasm       # CREngine binary (CoolReader engine)
+│   └── dither-worker.js    # Web Worker for Floyd-Steinberg dithering
+├── docs/
+│   └── xtc-format-spec.md  # XTC format specification
+├── .github/
+│   └── workflows/
+│       └── deploy.yml      # GitHub Pages deployment
+├── LICENSE
+└── README.md
 ```
 
-### Converter Pipeline
+## Dependencies
 
-```
-EPUB → epub_parser.py → pagination.py → text_renderer.py → xtc_format.py → XTC/XTCH
-```
+- [JSZip](https://stuk.github.io/jszip/) - ZIP file handling (loaded from CDN)
+- CREngine - EPUB rendering (bundled as WASM)
 
-## Testing
+Fonts (loaded on demand from Google Fonts):
+- Literata, Lora, Merriweather, Source Serif 4, Noto Serif, Noto Sans, Open Sans, Roboto, EB Garamond, Crimson Pro
+- Custom TTF/OTF font upload also supported
 
-Run tests with pytest:
+## Browser Support
 
-```bash
-# Run all tests with coverage
-make test
+Requires a modern browser with:
+- WebAssembly support
+- Web Workers
+- File API
+- Canvas API
 
-# Run specific test file
-PYTHONPATH=.:src pytest tests/test_config.py -v
+Tested on: Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
 
-# Run tests matching pattern
-PYTHONPATH=.:src pytest -k "test_sanitize" -v
-```
+## GitHub Pages Deployment
 
-The test suite covers:
-- **config.py**: Constants, heading size calculations
-- **epub_utils.py**: OPF finding, namespace handling
-- **optimizer.py**: CSS sanitization, manifest operations, font removal, image processing, EPUB rebuild
-- **xtc_format.py**: Binary encoding, quantization, container writing
-- **epub_parser.py**: HTML parsing, metadata extraction, TOC parsing
-- **text_renderer.py**: Font handling, text wrapping
-- **pagination.py**: Page layout, chapter detection
-- **converter.py**: End-to-end conversion, CLI argument handling, directory processing
+This project auto-deploys to GitHub Pages via GitHub Actions:
 
-### Test Fixtures
+1. Push to the `main` branch
+2. The workflow automatically deploys the `web/` folder
+3. Go to Settings > Pages to verify deployment
 
-Test fixtures in `tests/fixtures/` include:
-- Minimal valid EPUB structure (container.xml, content.opf, chapter1.xhtml)
-- NCX and NAV navigation files
-- Generated test images (grayscale, color)
+The site will be available at `https://<username>.github.io/epub-optimizer-xteink/`
 
-## Documentation
+## Credits
 
-- [XTC/XTG/XTH/XTCH Format Specification](docs/xtc-format-spec.md) ([source](https://gist.github.com/CrazyCoder/b125f26d6987c0620058249f59f1327d))
+- CREngine from [CoolReader](https://github.com/nickvantassel/literata-font)
+- XTC format specification from [CrazyCoder's Gist](https://gist.github.com/CrazyCoder/b125f26d6987c0620058249f59f1327d)
+- Inspired by [x4converter.rho.sh](https://x4converter.rho.sh)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file.
