@@ -3,7 +3,7 @@ name = "epub-optimizer-xteink"
 version = "0.1.0"
 description = "EPUB optimizer for Xteink X4 e-reader (480x800 e-paper display)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = "MIT"
 keywords = ["epub", "ebook", "e-reader", "xteink", "e-ink", "e-paper"]
 dependencies = [

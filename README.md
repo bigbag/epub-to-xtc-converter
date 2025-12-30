@@ -1,7 +1,7 @@
 # EPUB Optimizer for Xteink X4
 
 [![Tests](https://github.com/bigbag/epub-optimizer-xteink/workflows/Tests/badge.svg)](https://github.com/bigbag/epub-optimizer-xteink/actions?query=workflow%3ATests)
-[![versions](https://img.shields.io/badge/python-3.12-blue.svg)](https://github.com/bigbag/epub-optimizer-xteink)
+[![versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue.svg)](https://github.com/bigbag/epub-optimizer-xteink)
 [![license](https://img.shields.io/github/license/bigbag/epub-optimizer-xteink.svg)](https://github.com/bigbag/epub-optimizer-xteink/blob/main/LICENSE)
 
 Optimizes EPUB files for the Xteink X4 e-reader (and similar small e-paper devices).
