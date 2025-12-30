@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+.venv
+.pio
+.idea
+.DS_Store
+.vscode
+CLAUDE.md
+
+# Font files (keep directory structure with .gitkeep)
+fonts/*
+!fonts/.gitkeep
