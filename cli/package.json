@@ -7,7 +7,8 @@
     "epub-to-xtc": "./index.js"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test test/settings.test.js test/stable-pages.test.js test/optimizer-stable-pages.test.js"
   },
   "keywords": [
     "epub",
@@ -19,6 +20,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@xmldom/xmldom": "^0.8.13",
     "commander": "^12.0.0",
     "jszip": "^3.10.1",
     "minimatch": "^10.0.1",

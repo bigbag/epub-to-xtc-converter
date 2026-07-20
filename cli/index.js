@@ -9,7 +9,14 @@ const { program } = require('commander');
 const fs = require('fs');
 const path = require('path');
 const { minimatch } = require('minimatch');
-const { loadSettings, resolveSettings, validateSettings, validateOptimizerSettings, generateDefaultConfig } = require('./settings');
+const {
+    loadSettings,
+    resolveSettings,
+    validateSettings,
+    validateOptimizerSettings,
+    resolveOptimizerOptions,
+    generateDefaultConfig
+} = require('./settings');
 const { convertEpub, getOutputPath, cleanup } = require('./converter');
 const { optimizeEpub } = require('./optimizer');
 
@@ -94,10 +101,14 @@ program
     .description('Optimize EPUB file(s) for e-paper devices')
     .option('-o, --output <path>', 'Output file or directory')
     .option('-c, --config <path>', 'Path to settings JSON file')
+    .option('--stable-pages', 'Generate CrossInk stable page metadata')
+    .option('--no-stable-pages', 'Do not generate CrossInk stable page metadata')
+    .option('--chars-per-page <integer>', 'Reference characters per stable page (1-10000)')
     .action(async (input, options) => {
         try {
             const settings = loadSettings(options.config);
-            const opts = settings.optimizer || {};
+            const opts = resolveOptimizerOptions(settings.optimizer || {}, options);
+            settings.optimizer = opts;
 
             const errors = validateOptimizerSettings(settings);
             if (errors.length > 0) {
@@ -153,6 +164,20 @@ async function optimizeSingleFile(inputPath, outputPath, opts) {
 
     console.log(`  Output: ${result.outputPath}`);
     console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)`);
+    logStablePageStatus(result.stablePageNumbers);
+}
+
+function logStablePageStatus(stats) {
+    if (!stats) {
+        console.log('  Stable page metadata: disabled');
+        return;
+    }
+
+    console.log('  Stable page metadata: generated');
+    console.log(`  Reference characters/page: ${stats.referenceCharactersPerPage}`);
+    console.log(`  Location units: ${stats.locationCount}`);
+    console.log(`  Reference pages: ${stats.referencePageCount}`);
+    console.log('  Manifest: META-INF/x-locations.json');
 }
 
 /**
@@ -224,6 +249,8 @@ async function optimizeDirectory(inputDir, outputDir, opts) {
 
             console.log(`  Output: ${path.basename(result.outputPath)}`);
             console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)\n`);
+            logStablePageStatus(result.stablePageNumbers);
+            console.log('');
             successCount++;
 
         } catch (err) {

@@ -35,6 +35,10 @@
     "injectCss": true,
     "recursive": true,
     "include": "*.epub",
-    "exclude": null
+    "exclude": null,
+    "stablePageNumbers": {
+      "enabled": false,
+      "referenceCharactersPerPage": 1500
+    }
   }
 }
