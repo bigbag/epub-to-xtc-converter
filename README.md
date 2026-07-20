@@ -34,6 +34,7 @@ A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-i
   - Re-encode images to baseline JPEG (required by e-paper devices)
 - Remove unsupported image formats (SVG, WebP, TIFF)
 - Inject e-paper optimized CSS
+- Optionally generate CrossInk-compatible stable page metadata
 - Batch processing with ZIP export
 
 ## Supported Devices
@@ -99,6 +100,25 @@ node index.js optimize ./epubs/ -o ./output/ -c settings.json
 node index.js optimize ./library/ -o ./optimized/ -c settings.json
 ```
 
+#### Local CrossInk Stable Page Numbers
+
+The local optimizer can add `META-INF/x-locations.json` to an optimized EPUB, allowing the EPUB to be copied directly to a device running CrossInk without first passing it through the CrossInk web uploader.
+
+```bash
+node index.js optimize book.epub \
+  -o book_optimized.epub \
+  --stable-pages
+
+node index.js optimize book.epub \
+  -o book_optimized.epub \
+  --stable-pages \
+  --chars-per-page 1800
+```
+
+The default is 1500 reference characters per page. Valid values are integers from 1 through 10000. Smaller values produce more reference pages; larger values produce fewer. Passing `--chars-per-page` enables stable pages automatically, while `--no-stable-pages` explicitly disables them.
+
+Stable pages are content-based reference pages, not physical rendered screens. They remain independent of font size and margins. CrossInk's `wordsPerLocationUnit = 64` is a fixed protocol value and is not configurable. Command-line options take precedence over `settings.json`, which takes precedence over built-in defaults.
+
 Optimization options are configured in `settings.json` under the `optimizer` section:
 - Set `recursive` to `true` to process subdirectories (preserves directory structure in output)
 - Use `include`/`exclude` glob patterns to filter files (e.g., `"exclude": "*_optimized.epub"`)
@@ -123,7 +143,11 @@ Example `settings.json`:
     "injectCss": true,
     "recursive": false,
     "include": "*.epub",
-    "exclude": null
+    "exclude": null,
+    "stablePageNumbers": {
+      "enabled": false,
+      "referenceCharactersPerPage": 1500
+    }
   }
 }
 ```
@@ -192,6 +216,7 @@ Then open http://localhost:8000 in your browser.
 │   ├── encoder.js              # XTG/XTH/XTC format encoding
 │   ├── dither.js               # Floyd-Steinberg dithering
 │   ├── optimizer.js            # EPUB optimizer for e-paper
+│   ├── stable-pages.js         # CrossInk stable page metadata
 │   ├── settings.js             # Settings management
 │   └── package.json            # CLI dependencies
 ├── docs/
@@ -217,6 +242,7 @@ Then open http://localhost:8000 in your browser.
 - [JSZip](https://stuk.github.io/jszip/) - ZIP file handling
 - [sharp](https://sharp.pixelplumbing.com/) - Image processing (optimizer)
 - [minimatch](https://github.com/isaacs/minimatch) - Glob pattern matching (optimizer)
+- [@xmldom/xmldom](https://github.com/xmldom/xmldom) - XML parsing for EPUB package and content documents
 - CREngine WASM (shared with web app)
 
 ## Browser Support
