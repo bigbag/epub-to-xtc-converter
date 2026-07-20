@@ -124,6 +124,13 @@ test('existing x-locations manifest is replaced deterministically', async () => 
     });
 });
 
+test('smaller reference page sizes produce more reference pages', async () => {
+    const smaller = await generateStablePageManifest(createFixture('basic-epub3'), { referenceCharactersPerPage: 1000 });
+    const larger = await generateStablePageManifest(createFixture('basic-epub3'), { referenceCharactersPerPage: 2000 });
+    assert.equal(smaller.totalReferencePages, 2);
+    assert.equal(larger.totalReferencePages, 1);
+});
+
 test('missing package documents and spine resources fail with context', async () => {
     await assert.rejects(generateStablePageManifest(new JSZip()), /EPUB package document was not found/);
 

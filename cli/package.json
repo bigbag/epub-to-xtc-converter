@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test/settings.test.js test/stable-pages.test.js"
+    "test": "node --test test/settings.test.js test/stable-pages.test.js test/optimizer-stable-pages.test.js"
   },
   "keywords": [
     "epub",

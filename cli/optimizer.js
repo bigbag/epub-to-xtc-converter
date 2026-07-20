@@ -17,6 +17,10 @@ const fs = require('fs');
 const path = require('path');
 const JSZip = require('jszip');
 const sharp = require('sharp');
+const {
+    X_LOCATION_MANIFEST_PATH,
+    writeStablePageManifest
+} = require('./stable-pages');
 
 const MAX_IMAGE_DECODE_WIDTH = 2048;
 const MAX_IMAGE_DECODE_HEIGHT = 3072;
@@ -376,11 +380,30 @@ async function optimizeEpub(inputPath, outputPath, options) {
         }
     }
 
-    const outputBuffer = await epubZip.generateAsync({
-        type: 'nodebuffer',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 9 }
-    });
+    let stablePageStats = null;
+    if (options.stablePageNumbers?.enabled) {
+        try {
+            stablePageStats = await writeStablePageManifest(epubZip, {
+                referenceCharactersPerPage: options.stablePageNumbers.referenceCharactersPerPage
+            });
+        } catch (error) {
+            throw new Error(`Failed to generate stable page metadata for ${path.basename(inputPath)}:\n${error.message}`);
+        }
+
+        ops.push({
+            type: 'generateStablePageNumbers',
+            file: X_LOCATION_MANIFEST_PATH,
+            ...stablePageStats
+        });
+    }
+
+    const outputBuffer = stablePageStats
+        ? await generatePackagedEpub(epubZip)
+        : await epubZip.generateAsync({
+            type: 'nodebuffer',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 9 }
+        });
 
     // Ensure output directory exists
     const outputDir = path.dirname(outputPath);
@@ -397,8 +420,37 @@ async function optimizeEpub(inputPath, outputPath, options) {
         optimizedSize: outputBuffer.length,
         reduction: originalSize - outputBuffer.length,
         reductionPercent: ((1 - outputBuffer.length / originalSize) * 100).toFixed(1),
-        operations: ops
+        operations: ops,
+        stablePageNumbers: stablePageStats
     };
+}
+
+async function generatePackagedEpub(epubZip) {
+    const outputZip = new JSZip();
+    const mimetype = epubZip.files.mimetype;
+    if (mimetype && !mimetype.dir) {
+        outputZip.file('mimetype', await mimetype.async('nodebuffer'), {
+            compression: 'STORE',
+            createFolders: false
+        });
+    }
+
+    for (const filePath of Object.keys(epubZip.files)) {
+        if (filePath === 'mimetype') continue;
+        const file = epubZip.files[filePath];
+        if (file.dir) continue;
+        outputZip.file(filePath, await file.async('nodebuffer'), {
+            compression: 'DEFLATE',
+            compressionOptions: { level: 9 },
+            createFolders: false,
+            date: file.date,
+            comment: file.comment,
+            unixPermissions: file.unixPermissions,
+            dosPermissions: file.dosPermissions
+        });
+    }
+
+    return outputZip.generateAsync({ type: 'nodebuffer' });
 }
 
 module.exports = {

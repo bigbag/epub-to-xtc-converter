@@ -164,6 +164,20 @@ async function optimizeSingleFile(inputPath, outputPath, opts) {
 
     console.log(`  Output: ${result.outputPath}`);
     console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)`);
+    logStablePageStatus(result.stablePageNumbers);
+}
+
+function logStablePageStatus(stats) {
+    if (!stats) {
+        console.log('  Stable page metadata: disabled');
+        return;
+    }
+
+    console.log('  Stable page metadata: generated');
+    console.log(`  Reference characters/page: ${stats.referenceCharactersPerPage}`);
+    console.log(`  Location units: ${stats.locationCount}`);
+    console.log(`  Reference pages: ${stats.referencePageCount}`);
+    console.log('  Manifest: META-INF/x-locations.json');
 }
 
 /**
@@ -235,6 +249,8 @@ async function optimizeDirectory(inputDir, outputDir, opts) {
 
             console.log(`  Output: ${path.basename(result.outputPath)}`);
             console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)\n`);
+            logStablePageStatus(result.stablePageNumbers);
+            console.log('');
             successCount++;
 
         } catch (err) {
