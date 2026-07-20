@@ -446,19 +446,18 @@ function drawStatusBar(imageData) {
     var data = imageData.data;
     var width = imageData.width;
     var height = imageData.height;
-    var position = progressPosition.value;
-    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
     var sideMargin = parseInt(statusSideMargin.value) || 0;
     var fontSize = parseInt(statusFontSize.value) || 14;
     var fullWidth = progressFullWidth.checked;
 
     // Calculate status bar area
-    var barHeight = 6;
-    var textHeight = fontSize + 4;
-    var totalHeight = barHeight + textHeight + 4;
-    var startY = position === 'top' ? edgeMargin : height - totalHeight - edgeMargin;
-    var barY = position === 'top' ? startY + textHeight + 2 : startY;
-    var textY = position === 'top' ? startY : startY + barHeight + 2;
+    var geo = getStatusBarGeometry(height);
+    var barHeight = geo.barHeight;
+    var textHeight = geo.textHeight;
+    var totalHeight = geo.totalHeight;
+    var startY = geo.startY;
+    var barY = geo.barY;
+    var textY = geo.textY;
 
     var barStartX = fullWidth ? 0 : sideMargin;
     var barEndX = fullWidth ? width : width - sideMargin;
@@ -632,6 +631,33 @@ function drawStatusBar(imageData) {
     }
 }
 
+// Geometry of the status bar strip, in device pixels, for a page of the given
+// height. barHeight/textHeight/totalHeight are the strip's intrinsic sizes;
+// startY/barY/textY are the vertical paint offsets for the current position
+// (top vs bottom) and depend on `height`.
+function getStatusBarGeometry(height) {
+    var position = progressPosition.value;
+    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
+    var fontSize = parseInt(statusFontSize.value) || 14;
+
+    var barHeight = 6;
+    var textHeight = fontSize + 4;
+    var totalHeight = barHeight + textHeight + 4;
+    var startY = position === 'top' ? edgeMargin : height - totalHeight - edgeMargin;
+    var barY = position === 'top' ? startY + textHeight + 2 : startY;
+    var textY = position === 'top' ? startY : startY + barHeight + 2;
+
+    return {
+        edgeMargin: edgeMargin,
+        barHeight: barHeight,
+        textHeight: textHeight,
+        totalHeight: totalHeight,
+        startY: startY,
+        barY: barY,
+        textY: textY
+    };
+}
+
 // ==================== Rendering ====================
 function renderCurrentPage() {
     if (!wasmReady || !renderer) return;
@@ -675,12 +701,30 @@ function renderCurrentPage() {
     }
 }
 
+// Gap (in px) kept between the status bar strip and body text so the two never
+// touch when the strip's space is reserved in the page layout.
+var STATUS_BAR_GAP = 4;
+
 function applySettings() {
     if (!renderer) return;
 
     try {
         var m = parseInt(margin.value) || 16;
-        renderer.setMargins(m, m, m, m);
+        var marginTop = m;
+        var marginBottom = m;
+
+        // Reserve room for the status bar in the page layout so CREngine's
+        // pagination keeps body text out of the area that gets cleared.
+        if (enableProgressBar.checked) {
+            var geo = getStatusBarGeometry(0);
+            var reserve = geo.edgeMargin + geo.totalHeight + STATUS_BAR_GAP;
+            if (progressPosition.value === 'top') {
+                marginTop = Math.max(m, reserve);
+            } else {
+                marginBottom = Math.max(m, reserve);
+            }
+        }
+        renderer.setMargins(m, marginTop, m, marginBottom);
         renderer.setFontSize(parseInt(fontSize.value) || 34);
         renderer.setInterlineSpace(parseInt(lineHeight.value) || 120);
         renderer.setFontWeight(parseInt(fontWeight.value) || 400);
@@ -830,9 +874,11 @@ function setupSettings() {
     optProcessImages.addEventListener('change', updateImageSubControls);
     updateImageSubControls();
 
-    // Status bar sliders (render-only, no applySettings needed)
-    syncInputsRenderOnly(statusFontSize, statusFontSizeNum, 'statusFontSizeValue');
-    syncInputsRenderOnly(statusEdgeMargin, statusEdgeMarginNum, 'statusEdgeMarginValue');
+    // Font size and edge margin change the status bar's vertical footprint, so
+    // they must re-paginate (applySettings) to keep the reserved space in sync.
+    // Side margin only affects horizontal layout, so it stays render-only.
+    syncInputs(statusFontSize, statusFontSizeNum, 'statusFontSizeValue');
+    syncInputs(statusEdgeMargin, statusEdgeMarginNum, 'statusEdgeMarginValue');
     syncInputsRenderOnly(statusSideMargin, statusSideMarginNum, 'statusSideMarginValue');
 
     // Monitor DPI - calculates preview scale based on device DPI
@@ -948,12 +994,22 @@ function setupSettings() {
     enableProgressBar.addEventListener('change', function() {
         document.getElementById('progressSettings').style.display =
             enableProgressBar.checked ? 'block' : 'none';
+        // Toggling the bar changes the reserved layout space, so re-paginate.
+        applySettings();
         renderCurrentPage();
     });
 
-    // All progress bar setting changes trigger re-render
+    // Position (top vs bottom) determines which margin reserves the status bar
+    // space, so it must re-paginate.
+    progressPosition.addEventListener('change', function() {
+        applySettings();
+        renderCurrentPage();
+    });
+
+    // Remaining progress bar setting changes only affect what is painted, not
+    // the layout, so a re-render is enough.
     var progressBarCheckboxes = [
-        progressPosition, showBookProgress, showChapterMarks, showChapterProgress,
+        showBookProgress, showChapterMarks, showChapterProgress,
         progressFullWidth, showPageXY, showBookPercent, showChapterXY, showChapterPercent
     ];
     progressBarCheckboxes.forEach(function(el) {
@@ -1318,18 +1374,18 @@ function drawProgressBar(imageData, pageNum) {
     var data = imageData.data;
     var width = imageData.width;
     var height = imageData.height;
-    var position = progressPosition.value;
-    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
     var sideMargin = parseInt(statusSideMargin.value) || 0;
     var fontSize = parseInt(statusFontSize.value) || 14;
     var fullWidth = progressFullWidth.checked;
 
-    var barHeight = 6;
-    var textHeight = fontSize + 4;
-    var totalHeight = barHeight + textHeight + 4;
-    var startY = position === 'top' ? edgeMargin : height - totalHeight - edgeMargin;
-    var barY = position === 'top' ? startY + textHeight + 2 : startY;
-    var textY = position === 'top' ? startY : startY + barHeight + 2;
+    // Geometry of the strip we're about to paint (see getStatusBarGeometry).
+    var geo = getStatusBarGeometry(height);
+    var barHeight = geo.barHeight;
+    var textHeight = geo.textHeight;
+    var totalHeight = geo.totalHeight;
+    var startY = geo.startY;
+    var barY = geo.barY;
+    var textY = geo.textY;
 
     var barStartX = fullWidth ? 0 : sideMargin;
     var barEndX = fullWidth ? width : width - sideMargin;
