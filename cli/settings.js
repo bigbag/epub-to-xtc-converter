@@ -58,7 +58,11 @@ const DEFAULT_SETTINGS = {
         injectCss: true,
         recursive: true,
         include: '*.epub',
-        exclude: null
+        exclude: null,
+        stablePageNumbers: {
+            enabled: false,
+            referenceCharactersPerPage: 1500
+        }
     }
 };
 
@@ -168,7 +172,55 @@ function validateOptimizerFields(settings, errors) {
             (settings.optimizer.maxImageWidth < 1 || settings.optimizer.maxImageWidth > 2048)) {
             errors.push('optimizer.maxImageWidth must be between 1 and 2048');
         }
+
+        const stablePages = settings.optimizer.stablePageNumbers;
+        if (stablePages) {
+            if (typeof stablePages.enabled !== 'boolean') {
+                errors.push('optimizer.stablePageNumbers.enabled must be a boolean');
+            }
+
+            const charactersPerPage = stablePages.referenceCharactersPerPage;
+            if (!Number.isFinite(charactersPerPage) ||
+                !Number.isInteger(charactersPerPage) ||
+                charactersPerPage < 1 ||
+                charactersPerPage > 10000) {
+                errors.push('optimizer.stablePageNumbers.referenceCharactersPerPage must be an integer between 1 and 10000');
+            }
+        }
     }
+}
+
+function parseReferenceCharactersPerPage(value) {
+    const text = String(value);
+    if (!/^\d+$/.test(text)) {
+        throw new Error('optimizer.stablePageNumbers.referenceCharactersPerPage must be an integer between 1 and 10000');
+    }
+
+    const parsed = Number.parseInt(text, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10000) {
+        throw new Error('optimizer.stablePageNumbers.referenceCharactersPerPage must be an integer between 1 and 10000');
+    }
+    return parsed;
+}
+
+function resolveOptimizerOptions(optimizerSettings, cliOptions = {}) {
+    const resolved = {
+        ...optimizerSettings,
+        stablePageNumbers: {
+            ...(optimizerSettings.stablePageNumbers || DEFAULT_SETTINGS.optimizer.stablePageNumbers)
+        }
+    };
+
+    if (cliOptions.stablePages !== undefined) {
+        resolved.stablePageNumbers.enabled = cliOptions.stablePages;
+    }
+
+    if (cliOptions.charsPerPage !== undefined) {
+        resolved.stablePageNumbers.referenceCharactersPerPage = parseReferenceCharactersPerPage(cliOptions.charsPerPage);
+        resolved.stablePageNumbers.enabled = true;
+    }
+
+    return resolved;
 }
 
 /**
@@ -186,5 +238,7 @@ module.exports = {
     resolveSettings,
     validateSettings,
     validateOptimizerSettings,
+    parseReferenceCharactersPerPage,
+    resolveOptimizerOptions,
     generateDefaultConfig
 };
