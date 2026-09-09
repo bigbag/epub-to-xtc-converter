@@ -328,7 +328,14 @@ private:
 
 // Non-standard module-level helpers the JS loader expects.
 extern "C" {
-    EMSCRIPTEN_KEEPALIVE void* allocateMemory(size_t n) { return std::malloc(n); }
+    EMSCRIPTEN_KEEPALIVE void* allocateMemory(size_t n) {
+        void* p = std::malloc(n);
+        if (!p && n != 0) {
+            CRLog::error("allocateMemory: malloc(%zu) failed", n);
+            std::abort();
+        }
+        return p;
+    }
     EMSCRIPTEN_KEEPALIVE void  freeMemory(void* p)      { std::free(p); }
 }
 
