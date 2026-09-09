@@ -446,19 +446,11 @@ function drawStatusBar(imageData) {
     var data = imageData.data;
     var width = imageData.width;
     var height = imageData.height;
-    var position = progressPosition.value;
-    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
     var sideMargin = parseInt(statusSideMargin.value) || 0;
     var fontSize = parseInt(statusFontSize.value) || 14;
     var fullWidth = progressFullWidth.checked;
 
-    // Calculate status bar area
-    var barHeight = 6;
-    var textHeight = fontSize + 4;
-    var totalHeight = barHeight + textHeight + 4;
-    var startY = position === 'top' ? edgeMargin : height - totalHeight - edgeMargin;
-    var barY = position === 'top' ? startY + textHeight + 2 : startY;
-    var textY = position === 'top' ? startY : startY + barHeight + 2;
+    var { barHeight, textHeight, totalHeight, startY, barY, textY } = getStatusBarGeometry(height);
 
     var barStartX = fullWidth ? 0 : sideMargin;
     var barEndX = fullWidth ? width : width - sideMargin;
@@ -632,6 +624,25 @@ function drawStatusBar(imageData) {
     }
 }
 
+function getStatusBarGeometry(height) {
+    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
+    var barHeight = 6;
+    var textHeight = (parseInt(statusFontSize.value) || 14) + 4;
+    var barsHeight = barHeight + (showChapterProgress.checked ? barHeight + 2 : 0);
+    var totalHeight = barsHeight + textHeight + 4;
+    var top = progressPosition.value === 'top';
+    var startY = top ? edgeMargin : height - totalHeight - edgeMargin;
+    return {
+        reserve: edgeMargin + totalHeight + 4,
+        barHeight: barHeight,
+        textHeight: textHeight,
+        totalHeight: totalHeight,
+        startY: startY,
+        barY: top ? startY + textHeight + 2 : startY,
+        textY: top ? startY : startY + barsHeight + 2
+    };
+}
+
 // ==================== Rendering ====================
 function renderCurrentPage() {
     if (!wasmReady || !renderer) return;
@@ -680,7 +691,9 @@ function applySettings() {
 
     try {
         var m = parseInt(margin.value) || 16;
-        renderer.setMargins(m, m, m, m);
+        var reserve = enableProgressBar.checked ? getStatusBarGeometry(SCREEN_HEIGHT).reserve : m;
+        renderer.setMargins(m, progressPosition.value === 'top' ? Math.max(m, reserve) : m,
+            m, progressPosition.value === 'bottom' ? Math.max(m, reserve) : m);
         renderer.setFontSize(parseInt(fontSize.value) || 34);
         renderer.setInterlineSpace(parseInt(lineHeight.value) || 120);
         renderer.setFontWeight(parseInt(fontWeight.value) || 400);
@@ -704,6 +717,9 @@ function applySettings() {
         var pageCount = renderer.getPageCount();
         if (pageCount > 0) {
             totalPages = pageCount;
+            currentPage = Math.max(0, Math.min(currentPage, totalPages - 1));
+            currentToc = renderer.getToc() || [];
+            updateChapterList();
         }
     } catch (err) {
         console.warn('Error applying settings:', err);
@@ -830,9 +846,8 @@ function setupSettings() {
     optProcessImages.addEventListener('change', updateImageSubControls);
     updateImageSubControls();
 
-    // Status bar sliders (render-only, no applySettings needed)
-    syncInputsRenderOnly(statusFontSize, statusFontSizeNum, 'statusFontSizeValue');
-    syncInputsRenderOnly(statusEdgeMargin, statusEdgeMarginNum, 'statusEdgeMarginValue');
+    syncInputs(statusFontSize, statusFontSizeNum, 'statusFontSizeValue');
+    syncInputs(statusEdgeMargin, statusEdgeMarginNum, 'statusEdgeMarginValue');
     syncInputsRenderOnly(statusSideMargin, statusSideMarginNum, 'statusSideMarginValue');
 
     // Monitor DPI - calculates preview scale based on device DPI
@@ -944,16 +959,24 @@ function setupSettings() {
         renderCurrentPage();
     });
 
-    // Progress bar toggle - re-render to show/hide our custom status bar
+    // Update the page layout when the status bar changes.
     enableProgressBar.addEventListener('change', function() {
         document.getElementById('progressSettings').style.display =
             enableProgressBar.checked ? 'block' : 'none';
+        applySettings();
         renderCurrentPage();
+    });
+
+    [progressPosition, showChapterProgress].forEach(function(el) {
+        el.addEventListener('change', function() {
+            applySettings();
+            renderCurrentPage();
+        });
     });
 
     // All progress bar setting changes trigger re-render
     var progressBarCheckboxes = [
-        progressPosition, showBookProgress, showChapterMarks, showChapterProgress,
+        showBookProgress, showChapterMarks,
         progressFullWidth, showPageXY, showBookPercent, showChapterXY, showChapterPercent
     ];
     progressBarCheckboxes.forEach(function(el) {
@@ -1318,18 +1341,11 @@ function drawProgressBar(imageData, pageNum) {
     var data = imageData.data;
     var width = imageData.width;
     var height = imageData.height;
-    var position = progressPosition.value;
-    var edgeMargin = parseInt(statusEdgeMargin.value) || 0;
     var sideMargin = parseInt(statusSideMargin.value) || 0;
     var fontSize = parseInt(statusFontSize.value) || 14;
     var fullWidth = progressFullWidth.checked;
 
-    var barHeight = 6;
-    var textHeight = fontSize + 4;
-    var totalHeight = barHeight + textHeight + 4;
-    var startY = position === 'top' ? edgeMargin : height - totalHeight - edgeMargin;
-    var barY = position === 'top' ? startY + textHeight + 2 : startY;
-    var textY = position === 'top' ? startY : startY + barHeight + 2;
+    var { barHeight, textHeight, totalHeight, startY, barY, textY } = getStatusBarGeometry(height);
 
     var barStartX = fullWidth ? 0 : sideMargin;
     var barEndX = fullWidth ? width : width - sideMargin;
