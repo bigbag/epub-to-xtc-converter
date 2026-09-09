@@ -8,6 +8,13 @@
     statusFontSize.value = '24';
     statusEdgeMargin.value = '24';
     enableProgressBar.dispatchEvent(new Event('change'));
+    var toc = renderer.getToc();
+    check(JSON.stringify(currentToc) === JSON.stringify(toc), 'Chapter pages differ after layout change');
+    var links = chapterList.querySelectorAll('.chapter-item');
+    toc.forEach(function(chapter, index) {
+        links[index].click();
+        check(currentPage === (chapter.page || chapter.startPage || 0), 'Chapter link opens the wrong page');
+    });
     currentPage = totalPages - 1;
     enableProgressBar.checked = false;
     enableProgressBar.dispatchEvent(new Event('change'));
