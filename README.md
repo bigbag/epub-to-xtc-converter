@@ -34,6 +34,7 @@ A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-i
   - Re-encode images to baseline JPEG (required by e-paper devices)
 - Remove unsupported image formats (SVG, WebP, TIFF)
 - Inject e-paper optimized CSS
+- Generate optional CrossInk stable page metadata with the CLI
 - Batch processing with ZIP export
 
 ## Supported Devices
@@ -99,6 +100,40 @@ node index.js optimize ./epubs/ -o ./output/ -c settings.json
 node index.js optimize ./library/ -o ./optimized/ -c settings.json
 ```
 
+#### CrossInk stable pages
+
+The CLI optimizer can add `META-INF/x-locations.json` for CrossInk readers.
+Copy the optimized EPUB to the reader without using the CrossInk web uploader.
+This option does not change XTC/XTCH output or the browser optimizer.
+
+```bash
+node index.js optimize book.epub -o book_optimized.epub --stable-pages
+node index.js optimize ./library/ -o ./optimized/ --chars-per-page 1800
+```
+
+Stable pages use content counts instead of screen counts.
+Font size and margins do not change these reference pages.
+The default is 1500 reference characters per page.
+The value must be an integer from 1 to 10000.
+CrossInk uses 64 words per location unit.
+
+The optimizer does not generate stable pages by default.
+`--chars-per-page` enables generation unless you also pass `--no-stable-pages`.
+`--no-stable-pages` disables generation in either argument order.
+CLI options take priority over configuration values.
+The optimizer keeps any existing location manifest when it does not generate stable pages.
+
+The optimizer generates the manifest after content changes.
+The optimizer reports an error for missing spine resources.
+It also reports an error for manifests larger than the CrossInk v1.4.0 limit of 64 KiB.
+CrossInk cannot use metadata from books without text locations.
+The optimizer reports an error for these books.
+The optimizer does not create or overwrite the output EPUB when these errors occur.
+During generation, the optimizer places the `mimetype` entry first.
+It stores this entry without compression.
+
+Run the stable page regression checks with `cd cli && npm run test:stable-pages`.
+
 Optimization options are configured in `settings.json` under the `optimizer` section:
 - Set `recursive` to `true` to process subdirectories (preserves directory structure in output)
 - Use `include`/`exclude` glob patterns to filter files (e.g., `"exclude": "*_optimized.epub"`)
@@ -123,7 +158,11 @@ Example `settings.json`:
     "injectCss": true,
     "recursive": false,
     "include": "*.epub",
-    "exclude": null
+    "exclude": null,
+    "stablePageNumbers": {
+      "enabled": false,
+      "referenceCharactersPerPage": 1500
+    }
   }
 }
 ```
@@ -192,6 +231,7 @@ Then open http://localhost:8000 in your browser.
 │   ├── encoder.js              # XTG/XTH/XTC format encoding
 │   ├── dither.js               # Floyd-Steinberg dithering
 │   ├── optimizer.js            # EPUB optimizer for e-paper
+│   ├── stable-pages.js         # CrossInk stable page metadata
 │   ├── settings.js             # Settings management
 │   └── package.json            # CLI dependencies
 ├── docs/
@@ -217,6 +257,7 @@ Then open http://localhost:8000 in your browser.
 - [JSZip](https://stuk.github.io/jszip/) - ZIP file handling
 - [sharp](https://sharp.pixelplumbing.com/) - Image processing (optimizer)
 - [minimatch](https://github.com/isaacs/minimatch) - Glob pattern matching (optimizer)
+- [@xmldom/xmldom](https://github.com/xmldom/xmldom) - EPUB XML parsing
 - CREngine WASM (shared with web app)
 
 ## Browser Support
@@ -245,6 +286,7 @@ The site will be available at `https://<username>.github.io/epub-optimizer-xtein
 - CREngine WASM build by [fdkevin0](https://github.com/fdkevin0/x4converter.rho.sh) (vendored unmodified — see [docs/building-crengine-wasm.md](docs/building-crengine-wasm.md))
 - XTC format specification from [CrazyCoder's Gist](https://gist.github.com/CrazyCoder/b125f26d6987c0620058249f59f1327d)
 - Inspired by [x4converter.rho.sh](https://x4converter.rho.sh)
+- Stable page schema and counting rules from [CrossInk v1.4.0](https://github.com/uxjulia/CrossInk/blob/v1.4.0/web/pages/files.js)
 
 ## License
 
