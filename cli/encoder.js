@@ -191,8 +191,16 @@ function buildXTCContainer(pages, metadata, toc, width, height, isHQ) {
 
     // Write metadata (256 bytes)
     const encoder = new TextEncoder();
-    const titleBytes = encoder.encode(title.substring(0, 126));
-    const authorBytes = encoder.encode(author.substring(0, 62));
+    // Byte-safe UTF-8 truncation: never split a multi-byte sequence.
+    function encodeTruncated(text, maxBytes) {
+        const encoded = encoder.encode(text);
+        if (encoded.length <= maxBytes) return encoded;
+        let end = maxBytes;
+        while (end > 0 && (encoded[end] & 0xC0) === 0x80) end--;
+        return encoded.subarray(0, end);
+    }
+    const titleBytes = encodeTruncated(title, 127);
+    const authorBytes = encodeTruncated(author, 63);
 
     bytes.set(titleBytes, metadataOffset);
     bytes[metadataOffset + 127] = 0; // Null terminator
@@ -208,7 +216,7 @@ function buildXTCContainer(pages, metadata, toc, width, height, isHQ) {
         if (!ch) continue;
         const chTitle = ch.title || ch.name || `Chapter ${i + 1}`;
         const chPage = ch.page || ch.startPage || 0;
-        const chNameBytes = encoder.encode(chTitle.substring(0, 78));
+        const chNameBytes = encodeTruncated(chTitle, 79);
         bytes.set(chNameBytes, chapterPos);
         bytes[chapterPos + 79] = 0;
         view.setUint16(chapterPos + 80, chPage + 1, true); // Start page (1-indexed)
