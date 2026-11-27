@@ -60,12 +60,15 @@
     function tileSourceRect(layout, i) {
         const col = i % layout.cols;
         const row = Math.floor(i / layout.cols);
-        return {
-            x: layout.cx + col * layout.screenW,
-            y: layout.cy + row * layout.screenH,
-            w: Math.min(layout.screenW, layout.cw - col * layout.screenW),
-            h: Math.min(layout.screenH, layout.ch - row * layout.screenH)
-        };
+        const x = layout.cx + col * layout.screenW;
+        const y = layout.cy + row * layout.screenH;
+        let w = Math.min(layout.screenW, layout.cw - col * layout.screenW);
+        let h = Math.min(layout.screenH, layout.ch - row * layout.screenH);
+        // Clamp to the render canvas: rounding in computeLayout can make the
+        // content rect overshoot rw/rh, which would break getImageData.
+        w = Math.max(0, Math.min(w, layout.rw - x));
+        h = Math.max(0, Math.min(h, layout.rh - y));
+        return { x, y, w, h };
     }
 
     /** Single tile: centered. Multi-tile grid: top-left. */
@@ -192,6 +195,7 @@
         }
         const sums = prefixSums(tileCounts);
         const pageCount = sums[sums.length - 1];
+        if (pageCount === 0) throw new Error('PDF has no pages');
         assertPageCount(pageCount);
 
         const entries = [];

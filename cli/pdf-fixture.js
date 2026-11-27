@@ -5,7 +5,7 @@
  */
 function buildPdfFixture(opts) {
     opts = opts || {};
-    const pageCount = opts.pageCount || 3;
+    const pageCount = opts.pageCount === undefined ? 3 : opts.pageCount;
     const width = opts.width || 612;
     const height = opts.height || 792;
     const withOutline = opts.outline !== false && pageCount >= 2;

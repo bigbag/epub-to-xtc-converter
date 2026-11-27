@@ -150,3 +150,15 @@ test('guards: render size and page count', () => {
     assert.doesNotThrow(() => PdfCore.assertPageCount(65535));
     assert.throws(() => PdfCore.assertPageCount(65536), /65535/);
 });
+
+test('tileSourceRect: clamps to render canvas when the grid overshoots', () => {
+    // Hand-built layout: content rect spans 5..935 in both axes, overshooting
+    // the 934x934 render canvas by 1px (rounding in computeLayout can do this).
+    const layout = { scale: 1, rw: 934, rh: 934, cx: 5, cy: 5, cw: 930, ch: 930, cols: 2, rows: 2, count: 4, screenW: 480, screenH: 800 };
+    const r = PdfCore.tileSourceRect(layout, 3);
+    assert.equal(r.x, 485);
+    assert.equal(r.y, 805);
+    // pre-clamp w=450, h=130; clamped to rw-x=449 and rh-y=129
+    assert.equal(r.w, 449);
+    assert.equal(r.h, 129);
+});

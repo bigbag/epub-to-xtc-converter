@@ -11,6 +11,7 @@ let ditherWorker = null;
 let ditherCallbacks = new Map();
 let ditherJobId = 0;
 let pdfSource = null;
+let pdfRebuildChain = Promise.resolve();
 let activeKind = 'epub';
 
 // Device presets
@@ -413,6 +414,11 @@ async function switchToPdf(fileData) {
         fileData.loaded = true;
         renderCurrentPage();
     } catch (err) {
+        pdfSource = null;
+        totalPages = 0;
+        currentToc = [];
+        exportBtn.disabled = true;
+        exportPageBtn.disabled = true;
         console.error('Failed to load PDF:', err);
         alert('Failed to load PDF: ' + err.message);
     }
@@ -425,12 +431,18 @@ function setPdfUiMode(isPdf) {
     for (var i = 0; i < controls.length; i++) controls[i].disabled = isPdf;
 }
 
-async function rebuildPdfSource() {
-    if (activeKind !== 'pdf' || !loadedFiles[currentFileIndex]) return;
-    var keepPage = currentPage;
-    await switchToPdf(loadedFiles[currentFileIndex]);
-    currentPage = Math.max(0, Math.min(keepPage, totalPages - 1));
-    renderCurrentPage();
+function rebuildPdfSource() {
+    // Serialize rebuilds (latest wins): rapid zoom/trim/device changes must
+    // not interleave. Settings are read inside switchToPdf at execution time,
+    // so the last queued rebuild uses the newest UI values.
+    pdfRebuildChain = pdfRebuildChain.then(async function() {
+        if (activeKind !== 'pdf' || !loadedFiles[currentFileIndex]) return;
+        var keepPage = currentPage;
+        await switchToPdf(loadedFiles[currentFileIndex]);
+        currentPage = Math.max(0, Math.min(keepPage, totalPages - 1));
+        renderCurrentPage();
+    }).catch(function(err) { console.error('PDF rebuild failed:', err); });
+    return pdfRebuildChain;
 }
 
 function clearPreview() {

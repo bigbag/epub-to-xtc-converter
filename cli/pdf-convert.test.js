@@ -45,8 +45,6 @@ test('corrupt PDF rejects with friendly error', async () => {
     await assert.rejects(pdfRenderer.openPdf(bytes), /Invalid or corrupt PDF file/);
 });
 
-const PdfCore = require('../web/pdf-core.js');
-
 async function nodeSource(opts, fixtureOpts) {
     return pdfRenderer.createNodePdfSource(buildPdfFixture(fixtureOpts), Object.assign({ width: 480, height: 800 }, opts));
 }
@@ -127,6 +125,13 @@ test('blank pages with trim fall back to full page and render white', async () =
 
 test('invalid options reject', async () => {
     await assert.rejects(nodeSource({ zoom: 5 }), /pdf\.zoom/);
+});
+
+test('zero-page PDF: createNodePdfSource rejects', async () => {
+    await assert.rejects(
+        pdfRenderer.createNodePdfSource(buildPdfFixture({ pageCount: 0 }), { width: 480, height: 800 }),
+        /no pages|Invalid or corrupt/
+    );
 });
 
 const fs = require('node:fs');
@@ -214,6 +219,15 @@ test('convertPdf corrupt input: friendly error, no output file', async () => {
     assert.equal(fs.existsSync(output), false);
 });
 
+test('convertPdf zero-page input: rejects and writes no output file', async () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'empty.pdf');
+    const output = path.join(dir, 'empty.xtc');
+    fs.writeFileSync(input, buildPdfFixture({ pageCount: 0 }));
+    await assert.rejects(pdfRenderer.convertPdf(input, output, SETTINGS), /no pages|Invalid or corrupt/);
+    assert.equal(fs.existsSync(output), false);
+});
+
 test('CLI: PDF-only conversion works without font config', () => {
     const dir = tmpDir();
     const input = path.join(dir, 'book.pdf');
@@ -244,4 +258,23 @@ test('CLI: mixed directory without font fails validation clearly', () => {
         assert.match(err.stderr, /Font path is required/);
     }
     assert.ok(failed, 'mixed input without font must fail validation');
+});
+
+test('CLI: --trim-margins flag reaches the converter', () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtc');
+    fs.writeFileSync(input, buildPdfFixture());
+    execFileSync(process.execPath, [path.join(__dirname, 'index.js'), 'convert', input, '-o', output, '--trim-margins'], { encoding: 'utf8' });
+    assert.equal(parseHeader(new Uint8Array(fs.readFileSync(output))).pageCount, 3);
+});
+
+test('CLI: PDF-only directory converts without font config', () => {
+    const dir = tmpDir();
+    fs.writeFileSync(path.join(dir, 'book.pdf'), buildPdfFixture());
+    const outdir = path.join(dir, 'out');
+    execFileSync(process.execPath, [path.join(__dirname, 'index.js'), 'convert', dir, '-o', outdir], { encoding: 'utf8' });
+    const output = path.join(outdir, 'book.xtc');
+    assert.equal(fs.existsSync(output), true);
+    assert.equal(parseHeader(new Uint8Array(fs.readFileSync(output))).pageCount, 3);
 });

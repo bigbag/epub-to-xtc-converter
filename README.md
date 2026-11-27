@@ -1,4 +1,4 @@
-# EPUB to XTC Converter & Optimizer
+# EPUB & PDF to XTC Converter & Optimizer
 
 A tool for converting EPUB and PDF files to XTC/XTCH format and optimizing EPUBs for e-ink readers. Available as a browser-based web app and Node.js CLI.
 
