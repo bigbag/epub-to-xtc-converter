@@ -79,5 +79,79 @@
         return { dx: 0, dy: 0 };
     }
 
-    return { detectContentBox, computeLayout, tileSourceRect, tileDestOffset };
+    /** Depth-first flatten of pdf.js getOutline() items. */
+    function flattenOutline(items) {
+        const out = [];
+        (function walk(list) {
+            if (!Array.isArray(list)) return;
+            for (const item of list) {
+                if (!item) continue;
+                out.push({ title: item.title || '', dest: item.dest });
+                if (item.items) walk(item.items);
+            }
+        })(items);
+        return out;
+    }
+
+    function prefixSums(counts) {
+        const sums = [0];
+        for (let i = 0; i < counts.length; i++) sums.push(sums[i] + counts[i]);
+        return sums;
+    }
+
+    /** entries: [{title, page}] with page = 0-based PDF page or null. */
+    function mapTocToDevices(entries, tileCounts) {
+        const sums = prefixSums(tileCounts);
+        const out = [];
+        for (const e of entries) {
+            if (!Number.isInteger(e.page) || e.page < 0 || e.page >= tileCounts.length) continue;
+            out.push({ title: e.title, page: sums[e.page] });
+        }
+        return out;
+    }
+
+    /** Binary search: device page index -> {pdfPage, tile}. */
+    function locateTile(sums, deviceIndex) {
+        let lo = 0, hi = sums.length - 2;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (sums[mid] <= deviceIndex) lo = mid; else hi = mid - 1;
+        }
+        return { pdfPage: lo, tile: deviceIndex - sums[lo] };
+    }
+
+    function validatePdfOptions(opts) {
+        const errors = [];
+        opts = opts || {};
+        if (opts.zoom !== undefined) {
+            if (typeof opts.zoom !== 'number' || !Number.isFinite(opts.zoom) || opts.zoom < 1 || opts.zoom > 3) {
+                errors.push('pdf.zoom must be a number between 1.0 and 3.0');
+            }
+        }
+        if (opts.trimMargins !== undefined && typeof opts.trimMargins !== 'boolean') {
+            errors.push('pdf.trimMargins must be a boolean');
+        }
+        return errors;
+    }
+
+    function mapPdfError(err) {
+        const name = err && err.name;
+        if (name === 'PasswordException') return new Error('Password-protected PDFs are not supported');
+        if (name === 'InvalidPDFException' || name === 'MissingPDFException') return new Error('Invalid or corrupt PDF file');
+        return err;
+    }
+
+    function assertRenderLimits(rw, rh) {
+        if (rw > 8192 || rh > 8192) throw new Error('PDF render size exceeds 8192px; lower the zoom');
+    }
+
+    function assertPageCount(n) {
+        if (n > 65535) throw new Error('PDF produces more than 65535 device pages; lower the zoom');
+    }
+
+    return {
+        detectContentBox, computeLayout, tileSourceRect, tileDestOffset,
+        flattenOutline, prefixSums, mapTocToDevices, locateTile,
+        validatePdfOptions, mapPdfError, assertRenderLimits, assertPageCount
+    };
 });

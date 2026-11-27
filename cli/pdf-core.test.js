@@ -86,3 +86,67 @@ test('computeLayout: trimmed content box drives scale and offsets', () => {
     assert.equal(l.count, 1);
     assert.deepEqual(PdfCore.tileSourceRect(l, 0), { x: 60, y: 72, w: 480, h: 672 });
 });
+
+test('flattenOutline: depth-first with nested items', () => {
+    const outline = [
+        { title: 'A', dest: 'da', items: [{ title: 'A.1', dest: 'da1' }] },
+        { title: 'B', dest: 'db' }
+    ];
+    assert.deepEqual(PdfCore.flattenOutline(outline), [
+        { title: 'A', dest: 'da' },
+        { title: 'A.1', dest: 'da1' },
+        { title: 'B', dest: 'db' }
+    ]);
+    assert.deepEqual(PdfCore.flattenOutline(null), []);
+});
+
+test('prefixSums and mapTocToDevices', () => {
+    assert.deepEqual(PdfCore.prefixSums([1, 4, 2]), [0, 1, 5, 7]);
+    const entries = [
+        { title: 'One', page: 0 },
+        { title: 'Two', page: 1 },
+        { title: 'Bad', page: null },
+        { title: 'OutOfRange', page: 3 }
+    ];
+    assert.deepEqual(PdfCore.mapTocToDevices(entries, [1, 4, 2]), [
+        { title: 'One', page: 0 },
+        { title: 'Two', page: 1 }
+    ]);
+});
+
+test('locateTile: boundaries across variable tile counts', () => {
+    const sums = PdfCore.prefixSums([1, 4, 2]); // pages: [0], [1..4], [5..6]
+    assert.deepEqual(PdfCore.locateTile(sums, 0), { pdfPage: 0, tile: 0 });
+    assert.deepEqual(PdfCore.locateTile(sums, 1), { pdfPage: 1, tile: 0 });
+    assert.deepEqual(PdfCore.locateTile(sums, 4), { pdfPage: 1, tile: 3 });
+    assert.deepEqual(PdfCore.locateTile(sums, 5), { pdfPage: 2, tile: 0 });
+    assert.deepEqual(PdfCore.locateTile(sums, 6), { pdfPage: 2, tile: 1 });
+});
+
+test('validatePdfOptions: zoom and trimMargins', () => {
+    assert.deepEqual(PdfCore.validatePdfOptions({ zoom: 1, trimMargins: false }), []);
+    assert.deepEqual(PdfCore.validatePdfOptions({ zoom: 3 }), []);
+    assert.deepEqual(PdfCore.validatePdfOptions({}), []);
+    assert.equal(PdfCore.validatePdfOptions({ zoom: 0.9 }).length, 1);
+    assert.equal(PdfCore.validatePdfOptions({ zoom: 3.1 }).length, 1);
+    assert.equal(PdfCore.validatePdfOptions({ zoom: NaN }).length, 1);
+    assert.equal(PdfCore.validatePdfOptions({ zoom: '2' }).length, 1);
+    assert.equal(PdfCore.validatePdfOptions({ trimMargins: 'yes' }).length, 1);
+});
+
+test('mapPdfError: friendly messages', () => {
+    assert.equal(PdfCore.mapPdfError({ name: 'PasswordException' }).message,
+        'Password-protected PDFs are not supported');
+    assert.equal(PdfCore.mapPdfError({ name: 'InvalidPDFException' }).message,
+        'Invalid or corrupt PDF file');
+    const other = new Error('boom');
+    assert.equal(PdfCore.mapPdfError(other), other);
+});
+
+test('guards: render size and page count', () => {
+    assert.doesNotThrow(() => PdfCore.assertRenderLimits(8192, 8192));
+    assert.throws(() => PdfCore.assertRenderLimits(8193, 100), /8192/);
+    assert.throws(() => PdfCore.assertRenderLimits(100, 8193), /8192/);
+    assert.doesNotThrow(() => PdfCore.assertPageCount(65535));
+    assert.throws(() => PdfCore.assertPageCount(65536), /65535/);
+});
