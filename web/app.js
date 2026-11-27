@@ -1722,10 +1722,17 @@ function encodeXTH(imageData) {
 function buildXTCContainer(pages, isHQ) {
     var magic = isHQ ? 'XTCH' : 'XTC\0';
 
-    // Get metadata
-    var info = renderer.getDocumentInfo();
-    var title = info.title || loadedFiles[currentFileIndex].name;
-    var author = info.author || '';
+    // Get metadata (PDF source vs CREngine)
+    var info, title, author;
+    if (activeKind === 'pdf' && pdfSource) {
+        info = pdfSource.info;
+        title = info.title || loadedFiles[currentFileIndex].name.replace(/\.pdf$/i, '');
+        author = info.author || '';
+    } else {
+        info = renderer.getDocumentInfo();
+        title = info.title || loadedFiles[currentFileIndex].name;
+        author = info.author || '';
+    }
 
     // Calculate offsets
     var headerSize = 56;
@@ -1775,8 +1782,16 @@ function buildXTCContainer(pages, isHQ) {
 
     // Write metadata (256 bytes)
     var encoder = new TextEncoder();
-    var titleBytes = encoder.encode(title.substring(0, 126));
-    var authorBytes = encoder.encode(author.substring(0, 62));
+    // Byte-safe UTF-8 truncation: never split a multi-byte sequence.
+    function encodeTruncated(text, maxBytes) {
+        var encoded = encoder.encode(text);
+        if (encoded.length <= maxBytes) return encoded;
+        var end = maxBytes;
+        while (end > 0 && (encoded[end] & 0xC0) === 0x80) end--;
+        return encoded.subarray(0, end);
+    }
+    var titleBytes = encodeTruncated(title, 127);
+    var authorBytes = encodeTruncated(author, 63);
 
     bytes.set(titleBytes, metadataOffset);
     bytes[metadataOffset + 127] = 0; // Null terminator
@@ -1792,7 +1807,7 @@ function buildXTCContainer(pages, isHQ) {
         if (!ch) continue;
         var chTitle = ch.title || ch.name || 'Chapter ' + (i + 1);
         var chPage = ch.page || ch.startPage || 0;
-        var chNameBytes = encoder.encode(chTitle.substring(0, 78));
+        var chNameBytes = encodeTruncated(chTitle, 79);
         bytes.set(chNameBytes, chapterPos);
         bytes[chapterPos + 79] = 0;
         view.setUint16(chapterPos + 80, chPage + 1, true); // Start page (1-indexed)
@@ -1861,7 +1876,7 @@ async function optimizeEpubs() {
         downloadFile(zipBlob, 'optimized_epubs.zip');
     }
 
-    progressText.textContent = 'Optimization complete!';
+    progressText.textContent = skipped > 0 ? 'Optimization complete! (Skipped ' + skipped + ' PDF file(s) - optimizer is EPUB-only)' : 'Optimization complete!';
     setTimeout(function() {
         progressContainer.style.display = 'none';
     }, 2000);
