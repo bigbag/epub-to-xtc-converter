@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const PdfCore = require('../web/pdf-core.js');
 
 // Device presets
 const DEVICES = {
@@ -47,6 +48,10 @@ const DEFAULT_SETTINGS = {
         dithering: true,
         ditherStrength: 0.7,
         negative: false
+    },
+    pdf: {
+        trimMargins: false,
+        zoom: 1.0
     },
     optimizer: {
         removeCss: true,
@@ -126,13 +131,16 @@ function resolveSettings(settings) {
 /**
  * Validate settings
  */
-function validateSettings(settings) {
+function validateSettings(settings, opts) {
     const errors = [];
+    const requireFont = !opts || opts.requireFont !== false;
 
-    if (!settings.font.path) {
-        errors.push('Font path is required. Set font.path in your config file.');
-    } else if (!fs.existsSync(settings.font.path)) {
-        errors.push(`Font file not found: ${settings.font.path}`);
+    if (requireFont) {
+        if (!settings.font.path) {
+            errors.push('Font path is required. Set font.path in your config file.');
+        } else if (!fs.existsSync(settings.font.path)) {
+            errors.push(`Font file not found: ${settings.font.path}`);
+        }
     }
 
     if (settings.width <= 0 || settings.height <= 0) {
@@ -151,6 +159,8 @@ function validateSettings(settings) {
     if (!validFormats.includes(settings.output.format)) {
         errors.push(`Invalid output format: ${settings.output.format}. Must be 'xtc' or 'xtch'`);
     }
+
+    errors.push(...PdfCore.validatePdfOptions(settings.pdf || {}));
 
     validateOptimizerFields(settings, errors);
 

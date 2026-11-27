@@ -11,6 +11,7 @@ const path = require('path');
 const { minimatch } = require('minimatch');
 const { loadSettings, resolveSettings, validateSettings, validateOptimizerSettings, resolveOptimizerOptions, generateDefaultConfig } = require('./settings');
 const { convertEpub, getOutputPath, cleanup } = require('./converter');
+const { convertPdf } = require('./pdf-renderer');
 const { optimizeEpub } = require('./optimizer');
 
 program
@@ -24,44 +25,50 @@ program
     .option('-o, --output <path>', 'Output file or directory')
     .option('-c, --config <path>', 'Path to settings JSON file')
     .option('-f, --format <format>', 'Output format: xtc (1-bit) or xtch (2-bit)')
+    .option('--zoom <number>', 'PDF zoom factor 1.0-3.0 (splits pages into tiles)')
+    .option('--trim-margins', 'Trim PDF white margins before fitting')
     .action(async (input, options) => {
         try {
-            // Load and resolve settings
             let settings = loadSettings(options.config);
             settings = resolveSettings(settings);
 
-            // Override format if specified
-            if (options.format) {
-                settings.output.format = options.format;
+            if (options.format) settings.output.format = options.format;
+            if (options.zoom !== undefined) settings.pdf.zoom = parseFloat(options.zoom);
+            if (options.trimMargins) settings.pdf.trimMargins = true;
+
+            const inputPath = path.resolve(input);
+            if (!fs.existsSync(inputPath)) {
+                console.error(`Input not found: ${inputPath}`);
+                process.exit(1);
+            }
+            const stat = fs.statSync(inputPath);
+
+            let files;
+            if (stat.isDirectory()) {
+                files = collectInputFiles(inputPath, { recursive: true, include: '*.{epub,pdf}' }, inputPath);
+                if (files.length === 0) {
+                    console.error('No EPUB or PDF files found in directory (searched recursively)');
+                    process.exit(1);
+                }
+            } else if (stat.isFile() && /\.(epub|pdf)$/i.test(inputPath)) {
+                files = [{ absolute: inputPath, relative: path.basename(inputPath) }];
+            } else {
+                console.error('Input must be an EPUB or PDF file, or a directory containing them');
+                process.exit(1);
             }
 
-            // Validate settings
-            const errors = validateSettings(settings);
+            const requireFont = files.some(f => /\.epub$/i.test(f.absolute));
+            const errors = validateSettings(settings, { requireFont });
             if (errors.length > 0) {
                 console.error('Configuration errors:');
                 errors.forEach(e => console.error(`  - ${e}`));
                 process.exit(1);
             }
 
-            // Resolve input path
-            const inputPath = path.resolve(input);
-
-            if (!fs.existsSync(inputPath)) {
-                console.error(`Input not found: ${inputPath}`);
-                process.exit(1);
-            }
-
-            const stat = fs.statSync(inputPath);
-
             if (stat.isDirectory()) {
-                // Convert all EPUBs in directory
-                await convertDirectory(inputPath, options.output, settings);
-            } else if (stat.isFile() && inputPath.endsWith('.epub')) {
-                // Convert single file
-                await convertSingleFile(inputPath, options.output, settings);
+                await convertDirectory(inputPath, options.output, settings, files);
             } else {
-                console.error('Input must be an EPUB file or directory containing EPUB files');
-                process.exit(1);
+                await convertSingleFile(inputPath, options.output, settings);
             }
 
         } catch (err) {
@@ -168,9 +175,9 @@ function logStablePageStatus(stats) {
 }
 
 /**
- * Collect EPUB files from a directory, optionally recursive
+ * Collect input files from a directory, optionally recursive
  */
-function collectEpubFiles(dir, opts, basedir) {
+function collectInputFiles(dir, opts, basedir) {
     basedir = basedir || dir;
     let results = [];
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -182,7 +189,7 @@ function collectEpubFiles(dir, opts, basedir) {
         const relPath = path.relative(basedir, fullPath);
 
         if (entry.isDirectory() && opts.recursive) {
-            results = results.concat(collectEpubFiles(fullPath, opts, basedir));
+            results = results.concat(collectInputFiles(fullPath, opts, basedir));
         } else if (entry.isFile()) {
             if (!minimatch(entry.name, include)) continue;
             if (exclude && minimatch(entry.name, exclude)) continue;
@@ -194,7 +201,7 @@ function collectEpubFiles(dir, opts, basedir) {
 }
 
 async function optimizeDirectory(inputDir, outputDir, opts) {
-    const files = collectEpubFiles(inputDir, opts, inputDir);
+    const files = collectInputFiles(inputDir, opts, inputDir);
 
     if (files.length === 0) {
         console.error('No EPUB files found in directory');
@@ -263,7 +270,8 @@ async function convertSingleFile(inputPath, outputPath, settings) {
     const filename = path.basename(inputPath);
     console.log(`Converting: ${filename}`);
 
-    const result = await convertEpub(inputPath, outputPath, settings, (current, total) => {
+    const convert = /\.pdf$/i.test(inputPath) ? convertPdf : convertEpub;
+    const result = await convert(inputPath, outputPath, settings, (current, total) => {
         const percent = Math.round((current / total) * 100);
         process.stdout.write(`\r  Progress: ${current}/${total} pages (${percent}%)`);
     });
@@ -273,15 +281,7 @@ async function convertSingleFile(inputPath, outputPath, settings) {
     console.log(`  Format: ${result.format.toUpperCase()}`);
 }
 
-async function convertDirectory(inputDir, outputDir, settings) {
-    // Recursively find all EPUB files, preserving relative paths
-    const files = collectEpubFiles(inputDir, { recursive: true, include: '*.epub' }, inputDir);
-
-    if (files.length === 0) {
-        console.error('No EPUB files found in directory (searched recursively)');
-        process.exit(1);
-    }
-
+async function convertDirectory(inputDir, outputDir, settings, files) {
     // Determine output directory
     if (!outputDir) {
         outputDir = inputDir;
@@ -292,7 +292,7 @@ async function convertDirectory(inputDir, outputDir, settings) {
         }
     }
 
-    console.log(`Converting ${files.length} EPUB file(s)...\n`);
+    console.log(`Converting ${files.length} EPUB/PDF file(s)...\n`);
 
     const ext = settings.output.format === 'xtch' ? '.xtch' : '.xtc';
     let successCount = 0;
@@ -308,7 +308,8 @@ async function convertDirectory(inputDir, outputDir, settings) {
         console.log(`[${i + 1}/${files.length}] ${file.relative}`);
 
         try {
-            const result = await convertEpub(file.absolute, outputPath, settings, (current, total) => {
+            const convert = /\.pdf$/i.test(file.absolute) ? convertPdf : convertEpub;
+            const result = await convert(file.absolute, outputPath, settings, (current, total) => {
                 const percent = Math.round((current / total) * 100);
                 process.stdout.write(`\r  Progress: ${current}/${total} pages (${percent}%)`);
             });

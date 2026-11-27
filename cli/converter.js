@@ -225,10 +225,10 @@ async function convertEpub(epubPath, outputPath, settings, progressCallback) {
 }
 
 /**
- * Get output path for an EPUB file
+ * Get output path for an input file
  */
 function getOutputPath(inputPath, outputDir, format) {
-    const basename = path.basename(inputPath, '.epub');
+    const basename = path.basename(inputPath, path.extname(inputPath));
     const extension = format === 'xtch' ? '.xtch' : '.xtc';
     return path.join(outputDir, basename + extension);
 }

@@ -128,3 +128,120 @@ test('blank pages with trim fall back to full page and render white', async () =
 test('invalid options reject', async () => {
     await assert.rejects(nodeSource({ zoom: 5 }), /pdf\.zoom/);
 });
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+function tmpDir() {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'pdfxtc-'));
+}
+function parseHeader(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return {
+        magic: String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]),
+        pageCount: view.getUint16(6, true),
+        chapterCount: view.getUint16(56 + 196, true),
+        chapterOffset: Number(view.getBigUint64(48, true)),
+        indexOffset: Number(view.getBigUint64(24, true)),
+        view
+    };
+}
+function chapterAt(bytes, header, i) {
+    const pos = header.chapterOffset + i * 96;
+    let end = pos;
+    while (end < pos + 79 && bytes[end] !== 0) end++;
+    return {
+        title: new TextDecoder().decode(bytes.subarray(pos, end)),
+        startPage: header.view.getUint16(pos + 80, true)
+    };
+}
+const SETTINGS = {
+    width: 480, height: 800,
+    output: { format: 'xtc', dithering: true, ditherStrength: 0.7, negative: false },
+    pdf: { trimMargins: false, zoom: 1 }
+};
+
+test('convertPdf end-to-end: valid XTC with chapters', async () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtc');
+    fs.writeFileSync(input, buildPdfFixture());
+    const result = await pdfRenderer.convertPdf(input, output, SETTINGS);
+    assert.equal(result.pageCount, 3);
+    const bytes = new Uint8Array(fs.readFileSync(output));
+    const h = parseHeader(bytes);
+    assert.equal(h.magic, 'XTC\0');
+    assert.equal(h.pageCount, 3);
+    assert.equal(h.chapterCount, 2);
+    assert.deepEqual(chapterAt(bytes, h, 0), { title: 'Chapter One', startPage: 1 });
+    assert.deepEqual(chapterAt(bytes, h, 1), { title: 'Chapter Two', startPage: 2 });
+    assert.equal(h.view.getUint16(h.indexOffset + 12, true), 480);
+    assert.equal(h.view.getUint16(h.indexOffset + 14, true), 800);
+});
+
+test('convertPdf zoom 2 multiplies pages and shifts chapter targets', async () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtc');
+    fs.writeFileSync(input, buildPdfFixture());
+    const settings = Object.assign({}, SETTINGS, { pdf: { trimMargins: false, zoom: 2 } });
+    const result = await pdfRenderer.convertPdf(input, output, settings);
+    assert.equal(result.pageCount, 12);
+    const bytes = new Uint8Array(fs.readFileSync(output));
+    const h = parseHeader(bytes);
+    assert.equal(h.pageCount, 12);
+    assert.equal(chapterAt(bytes, h, 1).startPage, 5);
+});
+
+test('convertPdf XTCH variant', async () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtch');
+    fs.writeFileSync(input, buildPdfFixture());
+    const settings = Object.assign({}, SETTINGS, { output: Object.assign({}, SETTINGS.output, { format: 'xtch' }) });
+    await pdfRenderer.convertPdf(input, output, settings);
+    assert.equal(parseHeader(new Uint8Array(fs.readFileSync(output))).magic, 'XTCH');
+});
+
+test('convertPdf corrupt input: friendly error, no output file', async () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'bad.pdf');
+    const output = path.join(dir, 'bad.xtc');
+    fs.writeFileSync(input, buildPdfFixture().slice(0, 200));
+    await assert.rejects(pdfRenderer.convertPdf(input, output, SETTINGS), /Invalid or corrupt PDF file/);
+    assert.equal(fs.existsSync(output), false);
+});
+
+test('CLI: PDF-only conversion works without font config', () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtc');
+    fs.writeFileSync(input, buildPdfFixture());
+    execFileSync(process.execPath, [path.join(__dirname, 'index.js'), 'convert', input, '-o', output], { encoding: 'utf8' });
+    assert.equal(parseHeader(new Uint8Array(fs.readFileSync(output))).pageCount, 3);
+});
+
+test('CLI: --zoom flag reaches the converter', () => {
+    const dir = tmpDir();
+    const input = path.join(dir, 'book.pdf');
+    const output = path.join(dir, 'book.xtc');
+    fs.writeFileSync(input, buildPdfFixture());
+    execFileSync(process.execPath, [path.join(__dirname, 'index.js'), 'convert', input, '-o', output, '--zoom', '2'], { encoding: 'utf8' });
+    assert.equal(parseHeader(new Uint8Array(fs.readFileSync(output))).pageCount, 12);
+});
+
+test('CLI: mixed directory without font fails validation clearly', () => {
+    const dir = tmpDir();
+    fs.writeFileSync(path.join(dir, 'book.pdf'), buildPdfFixture());
+    fs.writeFileSync(path.join(dir, 'book.epub'), 'not a real epub');
+    let failed = false;
+    try {
+        execFileSync(process.execPath, [path.join(__dirname, 'index.js'), 'convert', dir, '-o', path.join(dir, 'out')], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+        failed = true;
+        assert.match(err.stderr, /Font path is required/);
+    }
+    assert.ok(failed, 'mixed input without font must fail validation');
+});

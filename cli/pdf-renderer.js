@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const { createCanvas: napiCreateCanvas } = require('@napi-rs/canvas');
 const PdfCore = require('../web/pdf-core.js');
+const { applyDithering, applyNegative } = require('./dither');
+const { encodeXTG, encodeXTH, buildXTCContainer } = require('./encoder');
 
 // Node does not auto-resolve these package assets; pass explicit filesystem
 // paths (getFactoryUrlProp requires a trailing separator; file:// URLs fail).
@@ -66,4 +68,41 @@ async function createNodePdfSource(data, opts) {
     }
 }
 
-module.exports = { loadPdfjs, openPdf, createCanvas, renderPageToCanvas, createNodePdfSource };
+/**
+ * Convert a single PDF to XTC/XTCH (mirrors convertEpub's pipeline).
+ */
+async function convertPdf(inputPath, outputPath, settings, progressCallback) {
+    const { width, height, output, pdf } = settings;
+    const isHQ = output.format === 'xtch';
+    const bits = isHQ ? 2 : 1;
+
+    const data = new Uint8Array(fs.readFileSync(inputPath));
+    const source = await createNodePdfSource(data, {
+        width, height, trimMargins: pdf.trimMargins, zoom: pdf.zoom
+    });
+
+    try {
+        const pages = [];
+        for (let i = 0; i < source.pageCount; i++) {
+            let imageData = await source.renderPage(i);
+            if (output.dithering) {
+                imageData = applyDithering(imageData, width, height, bits, output.ditherStrength);
+            }
+            if (output.negative) applyNegative(imageData);
+            pages.push(isHQ ? encodeXTH(imageData, width, height) : encodeXTG(imageData, width, height));
+            if (progressCallback) progressCallback(i + 1, source.pageCount);
+        }
+
+        const metadata = {
+            title: source.info.title || path.basename(inputPath, path.extname(inputPath)),
+            author: source.info.author || ''
+        };
+        const container = buildXTCContainer(pages, metadata, source.toc, width, height, isHQ);
+        fs.writeFileSync(outputPath, container);
+        return { outputPath, pageCount: source.pageCount, format: output.format };
+    } finally {
+        await source.destroy();
+    }
+}
+
+module.exports = { loadPdfjs, openPdf, createCanvas, renderPageToCanvas, createNodePdfSource, convertPdf };
