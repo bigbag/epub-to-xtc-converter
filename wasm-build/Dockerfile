@@ -26,10 +26,9 @@ RUN git clone --depth 1 https://github.com/emscripten-core/emsdk \
     && ./emsdk activate "${EMSDK_VERSION}"
 
 # --- CoolReader source -------------------------------------------------------
-# Override with --build-arg COOLREADER_REF=<sha> to pin to a known-good commit.
-# Default tracks HEAD; sed-based patches below have grep guards to fail loudly
-# if upstream drifts enough that a pattern no longer matches.
-ARG COOLREADER_REF=master
+# This revision matches the dependency versions in build.sh.
+# Set --build-arg COOLREADER_REF=<sha> to test another revision.
+ARG COOLREADER_REF=064723eace938389fb99f84518ce773ede38dbdf
 RUN git clone https://github.com/buggins/coolreader \
     && cd coolreader \
     && git checkout "${COOLREADER_REF}"
@@ -57,6 +56,12 @@ RUN sed -i \
 RUN sed -i 's|SRCFILE="${PN}-${PV}.tar.xz"|SRCFILE="${PN}-${PV}.tar.gz"|' \
     thirdparty_repo/zstd.meta.sh \
  && grep -q 'tar.gz' thirdparty_repo/zstd.meta.sh
+
+# Use the FreeType release mirror.
+# Keep the original checksum.
+RUN sed -i 's|https://download.savannah.gnu.org/releases/|https://download-mirror.savannah.gnu.org/releases/|' \
+    thirdparty_repo/freetype.meta.sh \
+ && grep -q 'download-mirror.savannah.gnu.org' thirdparty_repo/freetype.meta.sh
 
 # --- Patch 3: normalise bundled patch headers to uniform a/ b/ prefix ------
 # Some bundled patches use `--- foo.orig` (no slashes, needs -p0), others use

@@ -58,7 +58,11 @@ const DEFAULT_SETTINGS = {
         injectCss: true,
         recursive: true,
         include: '*.epub',
-        exclude: null
+        exclude: null,
+        stablePageNumbers: {
+            enabled: false,
+            referenceCharactersPerPage: 1500
+        }
     }
 };
 
@@ -168,7 +172,44 @@ function validateOptimizerFields(settings, errors) {
             (settings.optimizer.maxImageWidth < 1 || settings.optimizer.maxImageWidth > 2048)) {
             errors.push('optimizer.maxImageWidth must be between 1 and 2048');
         }
+
+        const stable = settings.optimizer.stablePageNumbers;
+        if (stable !== undefined) {
+            if (!stable || typeof stable !== 'object' || Array.isArray(stable)) {
+                errors.push('optimizer.stablePageNumbers must be an object');
+                return;
+            }
+            if (stable.enabled !== undefined && typeof stable.enabled !== 'boolean') {
+                errors.push('optimizer.stablePageNumbers.enabled must be a boolean');
+            }
+            const size = stable.referenceCharactersPerPage;
+            if (size !== undefined && (!Number.isInteger(size) || size < 1 || size > 10000)) {
+                errors.push('optimizer.stablePageNumbers.referenceCharactersPerPage must be an integer from 1 to 10000');
+            }
+        }
     }
+}
+
+function resolveOptimizerOptions(optimizer, cliOptions) {
+    const stable = optimizer.stablePageNumbers;
+    if (stable !== undefined && (!stable || typeof stable !== 'object' || Array.isArray(stable))) {
+        throw new Error('optimizer.stablePageNumbers must be an object');
+    }
+    const resolved = {
+        ...optimizer,
+        stablePageNumbers: { ...DEFAULT_SETTINGS.optimizer.stablePageNumbers, ...stable }
+    };
+    if (cliOptions.charsPerPage !== undefined) {
+        if (!/^\d+$/.test(cliOptions.charsPerPage)) {
+            throw new Error('--chars-per-page must be an integer from 1 to 10000');
+        }
+        resolved.stablePageNumbers.referenceCharactersPerPage = Number(cliOptions.charsPerPage);
+        resolved.stablePageNumbers.enabled = true;
+    }
+    if (cliOptions.stablePages !== undefined) {
+        resolved.stablePageNumbers.enabled = cliOptions.stablePages;
+    }
+    return resolved;
 }
 
 /**
@@ -186,5 +227,6 @@ module.exports = {
     resolveSettings,
     validateSettings,
     validateOptimizerSettings,
+    resolveOptimizerOptions,
     generateDefaultConfig
 };

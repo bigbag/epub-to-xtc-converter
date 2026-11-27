@@ -9,7 +9,7 @@ const { program } = require('commander');
 const fs = require('fs');
 const path = require('path');
 const { minimatch } = require('minimatch');
-const { loadSettings, resolveSettings, validateSettings, validateOptimizerSettings, generateDefaultConfig } = require('./settings');
+const { loadSettings, resolveSettings, validateSettings, validateOptimizerSettings, resolveOptimizerOptions, generateDefaultConfig } = require('./settings');
 const { convertEpub, getOutputPath, cleanup } = require('./converter');
 const { optimizeEpub } = require('./optimizer');
 
@@ -94,10 +94,14 @@ program
     .description('Optimize EPUB file(s) for e-paper devices')
     .option('-o, --output <path>', 'Output file or directory')
     .option('-c, --config <path>', 'Path to settings JSON file')
+    .option('--stable-pages', 'Generate CrossInk stable page metadata')
+    .option('--no-stable-pages', 'Disable stable page generation even with --chars-per-page')
+    .option('--chars-per-page <integer>', 'Set reference characters per page (1-10000). Enable generation.')
     .action(async (input, options) => {
         try {
             const settings = loadSettings(options.config);
-            const opts = settings.optimizer || {};
+            const opts = resolveOptimizerOptions(settings.optimizer || {}, options);
+            settings.optimizer = opts;
 
             const errors = validateOptimizerSettings(settings);
             if (errors.length > 0) {
@@ -153,6 +157,14 @@ async function optimizeSingleFile(inputPath, outputPath, opts) {
 
     console.log(`  Output: ${result.outputPath}`);
     console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)`);
+    logStablePageStatus(result.stablePageNumbers);
+}
+
+function logStablePageStatus(stats) {
+    if (!stats) return;
+    console.log(`  Stable pages: ${stats.referencePageCount} (${stats.referenceCharactersPerPage} characters/page)`);
+    console.log(`  Locations: ${stats.locationCount}`);
+    console.log('  Manifest: META-INF/x-locations.json');
 }
 
 /**
@@ -223,7 +235,9 @@ async function optimizeDirectory(inputDir, outputDir, opts) {
             const result = await optimizeEpub(file.absolute, outputPath, opts);
 
             console.log(`  Output: ${path.basename(result.outputPath)}`);
-            console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)\n`);
+            console.log(`  Size: ${formatSize(result.originalSize)} -> ${formatSize(result.optimizedSize)} (${result.reductionPercent}% reduction)`);
+            logStablePageStatus(result.stablePageNumbers);
+            console.log('');
             successCount++;
 
         } catch (err) {

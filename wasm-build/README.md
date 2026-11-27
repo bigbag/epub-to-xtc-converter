@@ -53,16 +53,16 @@ differences between freetype/harfbuzz versions — well under the user's
 
 ## Files
 
-- [`Dockerfile`](Dockerfile) — Ubuntu 24.04 + emsdk + 9 patches
+- [`Dockerfile`](Dockerfile) — Ubuntu 24.04, emsdk, and build patches
 - [`build.sh`](build.sh) — runs inside container; cmake + deps + crengine + em++ link
 - [`EpubRenderer.cpp`](EpubRenderer.cpp) — Embind wrapper (~210 lines) binding `LVDocView` to the JS API
 - [`post.js`](post.js) — bridges `Module._allocateMemory`/`_freeMemory` to non-underscore names the JS callers expect
 - [`scripts/normalize-patches.py`](scripts/normalize-patches.py) — rewrites bundled patch headers to uniform `a/foo`, `b/foo` so `patch -p1` works regardless of upstream convention
-- [`patches/`](patches/) — placeholder for additional `.patch` files (applied automatically if dropped in)
+- [`patches/`](patches/) — engine patches that the Docker build applies
 
 ## Patches applied (consolidated)
 
-All applied in the Dockerfile via `sed`, `COPY scripts/`, or `ln -s`:
+The Dockerfile applies these changes with `sed`, `COPY`, `ln`, and `patch`:
 
 1. **CMake minimum version** — bump `cmake_minimum_required(VERSION 3.0)` → `3.10`. Modern CMake refuses 3.0.
 2. **`zlib.meta.sh`** — URL → `zlib.net/fossils`, ext → `.tar.gz`, SHA512 recomputed. Upstream removed the `.tar.xz`.
@@ -74,6 +74,8 @@ All applied in the Dockerfile via `sed`, `COPY scripts/`, or `ln -s`:
 8. **Warnings-as-errors** — `add_compile_options(-Wno-error -w)` after `PROJECT()`. harfbuzz 2.8.2 trips modern Clang's `-Wcast-function-type-strict` (default-error).
 9. **`crengine` includes + props** — appended `target_include_directories(crengine PRIVATE …)` listing every bundled lib's source + build dir, plus `target_compile_definitions(crengine PRIVATE USE_FONTCONFIG=0)`. Cross-subdir headers (`fribidi-config.h`, etc.) aren't visible to crengine, and `crsetup.h` defaults `USE_FONTCONFIG=1` though we have no fontconfig.
 10. **fribidi include layout** — after deploy, `ln -sf . thirdparty/fribidi-1.0.10/lib/fribidi`. Sources use `#include <fribidi/fribidi.h>`.
+11. **Inline code ([issue #10](https://github.com/bigbag/epub-to-xtc-converter/issues/10))** — separate the default `code` and `pre` rules. The `code` rule uses inline display. It uses the parent element's `white-space` value. The `pre` rule keeps line breaks. Publisher CSS can change these defaults.
+12. **FreeType download** — use the Savannah release mirror. Keep the original checksum.
 
 Plus cmake flags at configure time:
 `-DCMAKE_DISABLE_FIND_PACKAGE_{PNG,ZLIB,BZip2,HarfBuzz,BrotliDec}=TRUE`
@@ -95,13 +97,31 @@ Notable choices:
 
 ## Reproducibility
 
-The Dockerfile pins:
+The Dockerfile uses these versions:
 
 - Ubuntu 24.04 base
-- `git clone --depth 1` of upstream Emscripten and CoolReader (so HEAD floats — pin SHAs in `Dockerfile` for true reproducibility)
+- CoolReader revision `064723eace938389fb99f84518ce773ede38dbdf`. This revision matches the dependency versions in `build.sh`. The current upstream HEAD does not match these versions. It also does not match the build patches.
+
+The build selects `latest` for Emscripten by default.
+The WASM files for issue #10 use Emscripten 6.0.9.
+Use `--build-arg EMSDK_VERSION=6.0.9` with `docker build` to select that version.
 
 Build takes ~15 min on a modern laptop. Most of the time is in
 emsdk install + harfbuzz compile.
+
+## Code layout regression check
+
+Run these commands from the repository root.
+Use the path to a local TTF or OTF font.
+
+```bash
+npm ci --prefix cli
+node cli/code-layout.test.js /path/to/font.ttf
+```
+
+The check renders small EPUBs with the project's WASM files.
+It checks inline code, inline whitespace, preformatted line breaks, and publisher block styles.
+An optional second argument selects another `crengine.js` file.
 
 ## Known minor issues
 
