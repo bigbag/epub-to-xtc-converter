@@ -8,6 +8,10 @@ const path = require('path');
 const { createCanvas: napiCreateCanvas } = require('@napi-rs/canvas');
 const PdfCore = require('../web/pdf-core.js');
 
+// Node does not auto-resolve these package assets; pass explicit filesystem
+// paths (getFactoryUrlProp requires a trailing separator; file:// URLs fail).
+const PDFJS_PKG_ROOT = path.dirname(require.resolve('pdfjs-dist/package.json'));
+
 let pdfjsPromise = null;
 function loadPdfjs() {
     if (!pdfjsPromise) pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -16,7 +20,14 @@ function loadPdfjs() {
 
 async function openPdf(data) {
     const pdfjs = await loadPdfjs();
-    const task = pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupported: false });
+    const task = pdfjs.getDocument({
+        data,
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        standardFontDataUrl: path.join(PDFJS_PKG_ROOT, 'standard_fonts') + path.sep,
+        cMapUrl: path.join(PDFJS_PKG_ROOT, 'cmaps') + path.sep,
+        wasmUrl: path.join(PDFJS_PKG_ROOT, 'wasm') + path.sep,
+    });
     try {
         const doc = await task.promise;
         return { doc, task };
