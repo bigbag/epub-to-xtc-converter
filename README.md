@@ -1,6 +1,6 @@
 # EPUB to XTC Converter & Optimizer
 
-A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-ink readers. Available as a browser-based web app and Node.js CLI.
+A tool for converting EPUB and PDF files to XTC/XTCH format and optimizing EPUBs for e-ink readers. Available as a browser-based web app and Node.js CLI.
 
 **[Live Demo](https://liashkov.site/epub-to-xtc-converter/)**
 
@@ -21,6 +21,8 @@ A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-i
   - Dark mode (negative)
 - Export individual pages or entire books
 - Download all as ZIP for batch exports
+- PDF support: render PDF pages to XTC/XTCH with fit-to-page, optional white-margin trimming, and zoom & split (1×–3×) for larger text
+- PDF chapter navigation from bookmarks/outline
 
 ### EPUB Optimizer
 - Optimize EPUB files for e-ink readers
@@ -48,7 +50,7 @@ A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-i
 ## Usage
 
 1. Open the web app in your browser
-2. Drop EPUB files onto the drop zone (or click to browse)
+2. Drop EPUB or PDF files onto the drop zone (or click to browse)
 3. Adjust settings in the sidebar
 4. Preview pages using navigation buttons
 5. Click "Export XTC" for single file or "Export All" for batch
@@ -60,6 +62,7 @@ A tool for converting EPUB files to XTC/XTCH format and optimizing EPUBs for e-i
 - **Text Settings**: Font, size, weight, line height, margins, alignment, hyphenation language
 - **Image Settings**: Quality mode (1-bit/2-bit), dithering strength, dark mode
 - **Progress Bar**: Book/chapter progress, page numbers (X/Y), percentages, chapter marks
+- **PDF Settings** (PDF files only): Trim margins, Zoom (1×–3×; splits each PDF page into multiple device pages, preserving layout). Text settings are disabled for PDFs.
 
 ### Optimizer Tab
 - Drop EPUBs and switch to the Optimizer tab
@@ -89,6 +92,15 @@ node index.js convert ./epubs/ -o ./output/ -c settings.json
 
 # Use XTCH format (2-bit grayscale)
 node index.js convert book.epub -f xtch -c settings.json
+
+# Convert a PDF (no font needed for PDF-only runs)
+node index.js convert book.pdf -o book.xtc
+
+# Bigger text: zoom 1.5x and trim white margins
+node index.js convert book.pdf --zoom 1.5 --trim-margins
+
+# Mixed EPUB + PDF directory (font required for the EPUBs)
+node index.js convert ./library/ -o ./output/ -c settings.json
 
 # Optimize single EPUB for e-paper
 node index.js optimize book.epub -o book_optimized.epub -c settings.json
@@ -148,6 +160,7 @@ Example `settings.json`:
   "textAlign": "justify",
   "hyphenation": { "enabled": true, "language": "en" },
   "output": { "format": "xtc", "dithering": true, "ditherStrength": 0.7 },
+  "pdf": { "trimMargins": false, "zoom": 1.0 },
   "optimizer": {
     "removeCss": true,
     "stripFonts": true,
@@ -166,6 +179,13 @@ Example `settings.json`:
   }
 }
 ```
+
+### PDF limitations
+
+- Multi-column pages at zoom > 1 read across columns (row-major tiles).
+- No text reflow; encrypted PDFs are not supported.
+- Output grows with zoom: ~38 MB for 785 pages at 1-bit/zoom 1, roughly 4× at zoom 2.
+- Limits: 65535 device pages per book; 8192 px max render dimension.
 
 ## XTC/XTCH Format
 
@@ -222,12 +242,17 @@ Then open http://localhost:8000 in your browser.
 │   ├── index.html              # Main HTML structure
 │   ├── style.css               # Application styles
 │   ├── app.js                  # Main application logic
+│   ├── pdf-core.js             # Shared PDF layout, trimming and page mapping
+│   ├── pdf-source.js           # Browser pdf.js adapter
+│   ├── pdf.test.js             # Browser-console PDF smoke script
 │   ├── crengine.js             # CREngine WASM loader
 │   ├── crengine.wasm           # CREngine binary (CoolReader engine)
 │   └── dither-worker.js        # Web Worker for Floyd-Steinberg dithering
 ├── cli/                        # Node.js CLI tool
 │   ├── index.js                # CLI entry point
 │   ├── converter.js            # WASM integration and conversion logic
+│   ├── pdf-renderer.js         # Node pdf.js adapter and canvas
+│   ├── pdf-fixture.js          # Generated test PDFs
 │   ├── encoder.js              # XTG/XTH/XTC format encoding
 │   ├── dither.js               # Floyd-Steinberg dithering
 │   ├── optimizer.js            # EPUB optimizer for e-paper
@@ -248,16 +273,19 @@ Then open http://localhost:8000 in your browser.
 ### Web App
 - [JSZip](https://stuk.github.io/jszip/) - ZIP file handling (loaded from CDN)
 - CREngine - EPUB rendering (bundled as WASM, see [docs/building-crengine-wasm.md](docs/building-crengine-wasm.md) for provenance and rebuild notes)
+- pdf.js 6.5.438 (loaded from jsDelivr CDN, legacy build) - PDF rendering
 - Google Fonts (loaded on demand): Literata, Lora, Merriweather, Source Serif 4, Noto Serif, Noto Sans, Open Sans, Roboto, EB Garamond, Crimson Pro
 - Custom TTF/OTF font upload also supported
 
 ### CLI
-- Node.js 18+
+- Node.js 22.13+
 - [Commander](https://github.com/tj/commander.js) - CLI framework
 - [JSZip](https://stuk.github.io/jszip/) - ZIP file handling
 - [sharp](https://sharp.pixelplumbing.com/) - Image processing (optimizer)
 - [minimatch](https://github.com/isaacs/minimatch) - Glob pattern matching (optimizer)
 - [@xmldom/xmldom](https://github.com/xmldom/xmldom) - EPUB XML parsing
+- [pdfjs-dist](https://mozilla.github.io/pdf.js/) (6.5.438, pinned) - PDF rendering
+- [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas) - Node canvas for pdf.js
 - CREngine WASM (shared with web app)
 
 ## Browser Support
@@ -286,6 +314,7 @@ The site will be available at `https://<username>.github.io/epub-optimizer-xtein
 - CREngine WASM build by [fdkevin0](https://github.com/fdkevin0/x4converter.rho.sh) (vendored unmodified — see [docs/building-crengine-wasm.md](docs/building-crengine-wasm.md))
 - XTC format specification from [CrazyCoder's Gist](https://gist.github.com/CrazyCoder/b125f26d6987c0620058249f59f1327d)
 - Inspired by [x4converter.rho.sh](https://x4converter.rho.sh)
+- PDF rendering by [pdf.js](https://mozilla.github.io/pdf.js/) (Apache-2.0)
 - Stable page schema and counting rules from [CrossInk v1.4.0](https://github.com/uxjulia/CrossInk/blob/v1.4.0/web/pages/files.js)
 
 ## License
