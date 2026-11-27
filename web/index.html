@@ -19,9 +19,9 @@
             <!-- Drop Zone -->
             <div class="drop-zone" id="dropZone">
                 <div class="drop-zone-icon">+</div>
-                <div class="drop-zone-text">Drop EPUB files here or click to browse</div>
+                <div class="drop-zone-text">Drop EPUB or PDF files here or click to browse</div>
             </div>
-            <input type="file" id="fileInput" accept=".epub" multiple>
+            <input type="file" id="fileInput" accept=".epub,.pdf" multiple>
 
             <!-- File List -->
             <div class="file-list" id="fileList"></div>
@@ -71,6 +71,7 @@
                     </div>
                 </div>
 
+                <div id="textSettings">
                 <h2>Text Settings</h2>
                 <div class="control-group">
                     <label>Font Family</label>
@@ -187,6 +188,31 @@
                         <option value="uk">Ukrainian</option>
                         <option value="cy">Welsh</option>
                     </select>
+                </div>
+                </div>
+
+                <div id="pdfSettings" style="display: none;">
+                    <h2>PDF Settings</h2>
+                    <div class="control-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="pdfTrimMargins">
+                            <label for="pdfTrimMargins">Trim margins</label>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Zoom</label>
+                        <select id="pdfZoom">
+                            <option value="1" selected>1× (fit page)</option>
+                            <option value="1.25">1.25×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="1.75">1.75×</option>
+                            <option value="2">2×</option>
+                            <option value="2.25">2.25×</option>
+                            <option value="2.5">2.5×</option>
+                            <option value="2.75">2.75×</option>
+                            <option value="3">3×</option>
+                        </select>
+                    </div>
                 </div>
 
                 <h2>Image Settings</h2>

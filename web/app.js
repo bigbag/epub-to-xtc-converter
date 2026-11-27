@@ -10,6 +10,8 @@ let currentFileIndex = 0;
 let ditherWorker = null;
 let ditherCallbacks = new Map();
 let ditherJobId = 0;
+let pdfSource = null;
+let activeKind = 'epub';
 
 // Device presets
 const DEVICES = {
@@ -64,6 +66,10 @@ const enableDithering = document.getElementById('enableDithering');
 const ditherStrength = document.getElementById('ditherStrength');
 const ditherStrengthNum = document.getElementById('ditherStrengthNum');
 const enableNegative = document.getElementById('enableNegative');
+const pdfSettings = document.getElementById('pdfSettings');
+const pdfTrimMargins = document.getElementById('pdfTrimMargins');
+const pdfZoom = document.getElementById('pdfZoom');
+const textSettings = document.getElementById('textSettings');
 
 // Progress bar settings
 const enableProgressBar = document.getElementById('enableProgressBar');
@@ -243,10 +249,10 @@ function setupDropZone() {
 
 function handleFiles(files) {
     const epubFiles = Array.from(files).filter(function(f) {
-        return f.name.endsWith('.epub');
+        return /\.(epub|pdf)$/i.test(f.name);
     });
     if (epubFiles.length === 0) {
-        alert('Please select EPUB files');
+        alert('Please select EPUB or PDF files');
         return;
     }
 
@@ -256,7 +262,7 @@ function handleFiles(files) {
             return f.name === file.name;
         });
         if (!exists) {
-            loadedFiles.push({ file: file, name: file.name, loaded: false });
+            loadedFiles.push({ file: file, name: file.name, loaded: false, type: /\.pdf$/i.test(file.name) ? 'pdf' : 'epub' });
         }
     }
 
@@ -334,6 +340,13 @@ async function switchToFile(index) {
     updateFileList();
 
     var fileData = loadedFiles[index];
+    if (fileData.type === 'pdf') {
+        await switchToPdf(fileData);
+        return;
+    }
+    activeKind = 'epub';
+    setPdfUiMode(false);
+    if (pdfSource) { await pdfSource.destroy(); pdfSource = null; }
     var data = new Uint8Array(await fileData.file.arrayBuffer());
 
     // Load EPUB into renderer
@@ -376,7 +389,54 @@ async function switchToFile(index) {
     }
 }
 
+async function switchToPdf(fileData) {
+    try {
+        var data = new Uint8Array(await fileData.file.arrayBuffer());
+        if (pdfSource) { await pdfSource.destroy(); pdfSource = null; }
+        pdfSource = await PdfWeb.createSource(data, {
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
+            trimMargins: pdfTrimMargins.checked,
+            zoom: parseFloat(pdfZoom.value)
+        });
+        activeKind = 'pdf';
+        setPdfUiMode(true);
+        totalPages = pdfSource.pageCount;
+        currentPage = 0;
+        currentToc = pdfSource.toc;
+        bookTitle.textContent = pdfSource.info.title || fileData.name;
+        bookAuthor.textContent = pdfSource.info.author || 'Unknown author';
+        updateChapterList();
+        exportBtn.disabled = false;
+        exportPageBtn.disabled = false;
+        exportAllBtn.disabled = false;
+        fileData.loaded = true;
+        renderCurrentPage();
+    } catch (err) {
+        console.error('Failed to load PDF:', err);
+        alert('Failed to load PDF: ' + err.message);
+    }
+}
+
+function setPdfUiMode(isPdf) {
+    pdfSettings.style.display = isPdf ? 'block' : 'none';
+    textSettings.style.opacity = isPdf ? '0.5' : '1';
+    var controls = textSettings.querySelectorAll('input, select');
+    for (var i = 0; i < controls.length; i++) controls[i].disabled = isPdf;
+}
+
+async function rebuildPdfSource() {
+    if (activeKind !== 'pdf' || !loadedFiles[currentFileIndex]) return;
+    var keepPage = currentPage;
+    await switchToPdf(loadedFiles[currentFileIndex]);
+    currentPage = Math.max(0, Math.min(keepPage, totalPages - 1));
+    renderCurrentPage();
+}
+
 function clearPreview() {
+    if (pdfSource) { pdfSource.destroy().catch(function() {}); pdfSource = null; }
+    activeKind = 'epub';
+    setPdfUiMode(false);
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     bookTitle.textContent = 'No book loaded';
@@ -644,7 +704,24 @@ function getStatusBarGeometry(height) {
 }
 
 // ==================== Rendering ====================
-function renderCurrentPage() {
+async function renderCurrentPage() {
+    if (activeKind === 'pdf') {
+        if (!pdfSource) return;
+        try {
+            var rgba = await pdfSource.renderPage(currentPage);
+            var imageData = new ImageData(rgba, SCREEN_WIDTH, SCREEN_HEIGHT);
+            if (enableNegative.checked) applyNegative(imageData);
+            drawStatusBar(imageData);
+            ctx.putImageData(imageData, 0, 0);
+            pageInfo.textContent = 'Page ' + (currentPage + 1) + ' / ' + totalPages;
+            prevBtn.disabled = currentPage === 0;
+            nextBtn.disabled = currentPage >= totalPages - 1;
+            updateCurrentChapter();
+        } catch (err) {
+            console.error('Error rendering PDF page:', err);
+        }
+        return;
+    }
     if (!wasmReady || !renderer) return;
 
     try {
@@ -688,6 +765,7 @@ function renderCurrentPage() {
 
 function applySettings() {
     if (!renderer) return;
+    if (activeKind === 'pdf') return;
 
     try {
         var m = parseInt(margin.value) || 16;
@@ -959,6 +1037,10 @@ function setupSettings() {
         renderCurrentPage();
     });
 
+    // PDF settings
+    pdfTrimMargins.addEventListener('change', rebuildPdfSource);
+    pdfZoom.addEventListener('change', rebuildPdfSource);
+
     // Update the page layout when the status bar changes.
     enableProgressBar.addEventListener('change', function() {
         document.getElementById('progressSettings').style.display =
@@ -1044,7 +1126,7 @@ function syncInputsRenderOnly(slider, num, valueId) {
     });
 }
 
-function updateCanvasSize() {
+async function updateCanvasSize() {
     if (devicePreset.value === 'custom') {
         SCREEN_WIDTH = parseInt(document.getElementById('customWidth').value);
         SCREEN_HEIGHT = parseInt(document.getElementById('customHeight').value);
@@ -1057,6 +1139,10 @@ function updateCanvasSize() {
         renderer.resize(SCREEN_WIDTH, SCREEN_HEIGHT);
         applySettings();
         renderCurrentPage();
+    }
+
+    if (activeKind === 'pdf' && pdfSource) {
+        await rebuildPdfSource();
     }
 }
 
@@ -1077,11 +1163,11 @@ function updateOrientation(rotation) {
 
 // ==================== Export Functions ====================
 async function exportXTC() {
-    if (!renderer || totalPages === 0) return;
+    if (totalPages === 0) return;
 
     var isHQ = qualityMode.value === 'hq';
     var extension = isHQ ? 'xtch' : 'xtc';
-    var filename = loadedFiles[currentFileIndex].name.replace('.epub', '.' + extension);
+    var filename = loadedFiles[currentFileIndex].name.replace(/\.(epub|pdf)$/i, '.' + extension);
 
     progressContainer.style.display = 'block';
     progressText.textContent = 'Generating XTC...';
@@ -1107,7 +1193,7 @@ async function exportXTC() {
 }
 
 async function exportCurrentPage() {
-    if (!renderer) return;
+    if (totalPages === 0) return;
 
     var isHQ = qualityMode.value === 'hq';
     var pageData = await renderPageForExport(currentPage);
@@ -1135,7 +1221,7 @@ async function exportAllFiles() {
             progressFill.style.width = overallProgress + '%';
         });
 
-        var filename = loadedFiles[i].name.replace('.epub', '.' + extension);
+        var filename = loadedFiles[i].name.replace(/\.(epub|pdf)$/i, '.' + extension);
         zip.file(filename, xtcData);
     }
 
@@ -1168,19 +1254,25 @@ async function generateXTC(progressCallback) {
 }
 
 async function renderPageForExport(pageNum) {
-    renderer.goToPage(pageNum);
-    renderer.renderCurrentPage();
+    var imageData;
+    if (activeKind === 'pdf') {
+        var rgba = await pdfSource.renderPage(pageNum);
+        imageData = new ImageData(rgba, SCREEN_WIDTH, SCREEN_HEIGHT);
+    } else {
+        renderer.goToPage(pageNum);
+        renderer.renderCurrentPage();
 
-    var frameBuffer = renderer.getFrameBuffer();
-    if (!frameBuffer || frameBuffer.length === 0) {
-        throw new Error('Empty frame buffer for page ' + pageNum);
+        var frameBuffer = renderer.getFrameBuffer();
+        if (!frameBuffer || frameBuffer.length === 0) {
+            throw new Error('Empty frame buffer for page ' + pageNum);
+        }
+
+        imageData = new ImageData(
+            new Uint8ClampedArray(frameBuffer),
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT
+        );
     }
-
-    var imageData = new ImageData(
-        new Uint8ClampedArray(frameBuffer),
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT
-    );
 
     // Apply dithering if enabled
     if (enableDithering.checked) {
@@ -1730,18 +1822,23 @@ function buildXTCContainer(pages, isHQ) {
 
 // ==================== EPUB Optimizer ====================
 async function optimizeEpubs() {
-    if (loadedFiles.length === 0) {
-        alert('Please load EPUB files first');
+    var epubFiles = loadedFiles.filter(function(f) { return f.type !== 'pdf'; });
+    var skipped = loadedFiles.length - epubFiles.length;
+    if (epubFiles.length === 0) {
+        alert('Optimizer works with EPUB files only');
         return;
     }
 
     var zip = new JSZip();
     progressContainer.style.display = 'block';
+    if (skipped > 0) {
+        progressText.textContent = 'Skipping ' + skipped + ' PDF file(s) - optimizer is EPUB-only';
+    }
 
-    for (var i = 0; i < loadedFiles.length; i++) {
-        var file = loadedFiles[i].file;
-        progressText.textContent = 'Optimizing ' + (i + 1) + ' / ' + loadedFiles.length + ': ' + file.name;
-        progressFill.style.width = ((i / loadedFiles.length) * 100) + '%';
+    for (var i = 0; i < epubFiles.length; i++) {
+        var file = epubFiles[i].file;
+        progressText.textContent = 'Optimizing ' + (i + 1) + ' / ' + epubFiles.length + ': ' + file.name;
+        progressFill.style.width = ((i / epubFiles.length) * 100) + '%';
 
         try {
             var optimized = await optimizeEpub(file);
@@ -1754,10 +1851,10 @@ async function optimizeEpubs() {
     progressText.textContent = 'Creating ZIP file...';
     progressFill.style.width = '100%';
 
-    if (loadedFiles.length === 1) {
+    if (epubFiles.length === 1) {
         // Single file - download directly
-        var optimized = await optimizeEpub(loadedFiles[0].file);
-        downloadFile(optimized, loadedFiles[0].name.replace('.epub', '_optimized.epub'));
+        var optimized = await optimizeEpub(epubFiles[0].file);
+        downloadFile(optimized, epubFiles[0].name.replace('.epub', '_optimized.epub'));
     } else {
         // Multiple files - download as ZIP
         var zipBlob = await zip.generateAsync({ type: 'blob' });
