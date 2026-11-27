@@ -149,9 +149,105 @@
         if (n > 65535) throw new Error('PDF produces more than 65535 device pages; lower the zoom');
     }
 
+    /**
+     * Build a device-page document source from an open pdf.js document.
+     * createCanvas(w, h) -> {canvas, context} is injected (DOM or @napi-rs/canvas).
+     */
+    async function createSource(opts) {
+        const doc = opts.doc;
+        const loadingTask = opts.loadingTask;
+        const createCanvas = opts.createCanvas;
+        const width = opts.width;
+        const height = opts.height;
+        const trimMargins = !!opts.trimMargins;
+        const zoom = opts.zoom === undefined ? 1 : opts.zoom;
+        const errors = validatePdfOptions({ zoom, trimMargins });
+        if (errors.length) throw new Error(errors.join('; '));
+
+        const layouts = [];
+        const tileCounts = [];
+        for (let p = 1; p <= doc.numPages; p++) {
+            const page = await doc.getPage(p);
+            const vp = page.getViewport({ scale: 1 });
+            let box = null;
+            if (trimMargins) {
+                const ds = 200 / Math.max(vp.width, vp.height);
+                const dw = Math.max(1, Math.round(vp.width * ds));
+                const dh = Math.max(1, Math.round(vp.height * ds));
+                const det = createCanvas(dw, dh);
+                det.context.fillStyle = '#ffffff';
+                det.context.fillRect(0, 0, dw, dh);
+                await page.render({ canvasContext: det.context, viewport: page.getViewport({ scale: ds }) }).promise;
+                const px = detectContentBox(det.context.getImageData(0, 0, dw, dh).data, dw, dh);
+                // Clamp to the page: the pixel->PDF round-trip (and full-bounds
+                // fallback on blank pages) can overshoot vp by a rounding error.
+                const bx = Math.min(vp.width, px.x / ds);
+                const by = Math.min(vp.height, px.y / ds);
+                box = { x: bx, y: by, w: Math.min(vp.width - bx, px.w / ds), h: Math.min(vp.height - by, px.h / ds) };
+            }
+            const layout = computeLayout(vp.width, vp.height, width, height, { zoom, box });
+            assertRenderLimits(layout.rw, layout.rh);
+            layouts.push(layout);
+            tileCounts.push(layout.count);
+        }
+        const sums = prefixSums(tileCounts);
+        const pageCount = sums[sums.length - 1];
+        assertPageCount(pageCount);
+
+        const entries = [];
+        const outline = await doc.getOutline();
+        for (const item of flattenOutline(outline)) {
+            let page = null;
+            try {
+                const dest = typeof item.dest === 'string' ? await doc.getDestination(item.dest) : item.dest;
+                if (Array.isArray(dest) && dest[0]) page = await doc.getPageIndex(dest[0]);
+            } catch (e) { page = null; }
+            entries.push({ title: item.title, page });
+        }
+        const toc = mapTocToDevices(entries, tileCounts);
+
+        const meta = await doc.getMetadata().catch(() => null);
+        const info = {
+            title: (meta && meta.info && meta.info.Title) || '',
+            author: (meta && meta.info && meta.info.Author) || ''
+        };
+
+        let last = null; // cache: consecutive tiles of one PDF page reuse the render
+        async function renderPage(deviceIndex) {
+            if (deviceIndex < 0 || deviceIndex >= pageCount) {
+                throw new Error('Device page index out of range: ' + deviceIndex);
+            }
+            const loc = locateTile(sums, deviceIndex);
+            const layout = layouts[loc.pdfPage];
+            if (!last || last.pdfPage !== loc.pdfPage) {
+                const page = await doc.getPage(loc.pdfPage + 1);
+                const viewport = page.getViewport({ scale: layout.scale });
+                const c = createCanvas(layout.rw, layout.rh);
+                c.context.fillStyle = '#ffffff';
+                c.context.fillRect(0, 0, layout.rw, layout.rh);
+                await page.render({ canvasContext: c.context, viewport }).promise;
+                last = { pdfPage: loc.pdfPage, context: c.context };
+            }
+            const rect = tileSourceRect(layout, loc.tile);
+            const tile = last.context.getImageData(rect.x, rect.y, rect.w, rect.h);
+            const out = createCanvas(width, height);
+            out.context.fillStyle = '#ffffff';
+            out.context.fillRect(0, 0, width, height);
+            const off = tileDestOffset(layout);
+            out.context.putImageData(tile, off.dx, off.dy);
+            return new Uint8ClampedArray(out.context.getImageData(0, 0, width, height).data);
+        }
+
+        return {
+            pageCount, info, toc, layouts, renderPage,
+            destroy: () => loadingTask.destroy()
+        };
+    }
+
     return {
         detectContentBox, computeLayout, tileSourceRect, tileDestOffset,
         flattenOutline, prefixSums, mapTocToDevices, locateTile,
-        validatePdfOptions, mapPdfError, assertRenderLimits, assertPageCount
+        validatePdfOptions, mapPdfError, assertRenderLimits, assertPageCount,
+        createSource
     };
 });

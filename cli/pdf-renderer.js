@@ -1,7 +1,7 @@
 /**
  * Node adapter: pdf.js + @napi-rs/canvas -> PDF document source.
- * Verified against pdfjs-dist 6.5.438: Node factories and package assets
- * (standard_fonts, cmaps, wasm) auto-resolve; no custom CanvasFactory needed.
+ * Verified against pdfjs-dist 6.5.438: no custom CanvasFactory needed;
+ * package asset URLs (standard_fonts, cmaps, wasm) are set explicitly in openPdf.
  */
 const fs = require('fs');
 const path = require('path');
@@ -52,4 +52,18 @@ async function renderPageToCanvas(doc, pageNumber, scale) {
     return { canvas, context, viewport };
 }
 
-module.exports = { loadPdfjs, openPdf, createCanvas, renderPageToCanvas };
+async function createNodePdfSource(data, opts) {
+    const { doc, task } = await openPdf(data);
+    try {
+        return await PdfCore.createSource({
+            doc, loadingTask: task, createCanvas,
+            width: opts.width, height: opts.height,
+            trimMargins: opts.trimMargins, zoom: opts.zoom
+        });
+    } catch (err) {
+        await task.destroy().catch(() => {});
+        throw PdfCore.mapPdfError(err);
+    }
+}
+
+module.exports = { loadPdfjs, openPdf, createCanvas, renderPageToCanvas, createNodePdfSource };

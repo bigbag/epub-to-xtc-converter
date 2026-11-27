@@ -44,3 +44,87 @@ test('corrupt PDF rejects with friendly error', async () => {
     const bytes = buildPdfFixture().slice(0, 200);
     await assert.rejects(pdfRenderer.openPdf(bytes), /Invalid or corrupt PDF file/);
 });
+
+const PdfCore = require('../web/pdf-core.js');
+
+async function nodeSource(opts, fixtureOpts) {
+    return pdfRenderer.createNodePdfSource(buildPdfFixture(fixtureOpts), Object.assign({ width: 480, height: 800 }, opts));
+}
+
+test('source zoom 1: 3 device pages, TOC, centered letterbox, content pixel', async () => {
+    const src = await nodeSource({});
+    try {
+        assert.equal(src.pageCount, 3);
+        assert.deepEqual(src.toc, [
+            { title: 'Chapter One', page: 0 },
+            { title: 'Chapter Two', page: 1 }
+        ]);
+        assert.equal(src.layouts[0].cw, 480);
+        assert.equal(src.layouts[0].ch, 621);
+        const rgba = await src.renderPage(0);
+        assert.equal(rgba.length, 480 * 800 * 4);
+        // top letterbox row is white
+        assert.equal(rgba[0], 255);
+        // center of the black rectangle (rect y 72..672 scaled + dy 89 -> ~145..616)
+        const o = (400 * 480 + 240) * 4;
+        assert.ok(rgba[o] < 128, 'center should be inside the black rectangle');
+    } finally {
+        await src.destroy();
+    }
+});
+
+test('source zoom 2: 4 tiles per page, TOC maps to device pages', async () => {
+    const src = await nodeSource({ zoom: 2 });
+    try {
+        assert.equal(src.pageCount, 12);
+        assert.deepEqual(src.toc, [
+            { title: 'Chapter One', page: 0 },
+            { title: 'Chapter Two', page: 4 }
+        ]);
+        const a = await src.renderPage(0);
+        const b = await src.renderPage(4);
+        assert.notDeepEqual(a, b);
+    } finally {
+        await src.destroy();
+    }
+});
+
+test('source trim: larger scale than untrimmed, still 1 tile per page', async () => {
+    const plain = await nodeSource({});
+    const trimmed = await nodeSource({ trimMargins: true });
+    try {
+        assert.ok(trimmed.layouts[0].scale > plain.layouts[0].scale + 0.1);
+        assert.equal(trimmed.pageCount, 3);
+    } finally {
+        await plain.destroy();
+        await trimmed.destroy();
+    }
+});
+
+test('rotated page (/Rotate 90) uses swapped viewport dims', async () => {
+    const src = await nodeSource({}, { rotateLast: true });
+    try {
+        // last page viewport is 792x612 -> fit by width: scale 480/792
+        assert.equal(src.layouts[2].cw, 480);
+        assert.equal(src.layouts[2].ch, 371);
+    } finally {
+        await src.destroy();
+    }
+});
+
+test('blank pages with trim fall back to full page and render white', async () => {
+    const src = await nodeSource({ trimMargins: true }, { blank: true });
+    try {
+        assert.equal(src.pageCount, 3);
+        assert.equal(src.layouts[0].cw, 480);
+        assert.equal(src.layouts[0].ch, 621);
+        const rgba = await src.renderPage(0);
+        assert.ok(rgba.every(v => v === 255));
+    } finally {
+        await src.destroy();
+    }
+});
+
+test('invalid options reject', async () => {
+    await assert.rejects(nodeSource({ zoom: 5 }), /pdf\.zoom/);
+});
