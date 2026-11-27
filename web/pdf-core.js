@@ -159,10 +159,10 @@
         const createCanvas = opts.createCanvas;
         const width = opts.width;
         const height = opts.height;
-        const trimMargins = !!opts.trimMargins;
         const zoom = opts.zoom === undefined ? 1 : opts.zoom;
-        const errors = validatePdfOptions({ zoom, trimMargins });
+        const errors = validatePdfOptions({ zoom, trimMargins: opts.trimMargins });
         if (errors.length) throw new Error(errors.join('; '));
+        const trimMargins = !!opts.trimMargins;
 
         const layouts = [];
         const tileCounts = [];
